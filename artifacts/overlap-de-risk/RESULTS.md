@@ -87,6 +87,23 @@ pending direct measurement.** The weaker and still-supported statement is that t
 two engines are of broadly comparable throughput on this workload. Section 2
 measures the residue directly instead of inferring it.
 
+### Also withdrawn: "data movement is worth ~2%"
+
+`artifacts/next-pass/RESULTS.md` section 10 dismissed deep-K accumulation,
+fusion and packed residency together, on the grounds that they "all target data
+movement, which section 3 measured at ~2% end-to-end".
+
+That measurement was narrower than the conclusion drawn from it. Section 3 of
+that document measured exactly one effect -- a redundant activation copy caused
+by an N-outer loop order -- and found it worth ~2%. It did not measure data
+movement in general.
+
+This pass measured a *different* data-movement cost on the same path,
+`stage_out`, at **162 ms per prefill, 11.4% of wall** (section 2). So the
+generalisation was wrong, and the specific 2% figure remains correct for what it
+actually measured. Deep-K accumulation, fusion and packed residency have **not**
+been disproven; they are unmeasured.
+
 ---
 
 ## 1. Baseline reproduction [MEASURED]
@@ -114,6 +131,12 @@ Also verified:
 ---
 
 ## 2. What the CPU-side residue actually is [MEASURED]
+
+**Definition, used consistently below.** "CPU-side residue" means *work the
+CURRENT NPU offload path does not execute* -- not work the NPU is incapable of.
+Some of it (attention above all) may be eligible for NPU execution or fusion
+later; nothing here shows otherwise, and section 10 treats attention as an open
+target rather than a closed one.
 
 Instrumented with `runtime/ggml_node_profile.c`, which brackets every ggml graph
 node on thread 0 between "before compute" and "after `ggml_barrier`". Because
@@ -376,3 +399,255 @@ bit-exact, it is cheap, and it confirms the simulation's prediction that overlap
 of this kind is worth only a few percent. It is left **off by default** in this
 pass so the branch stays directly comparable to the baseline; it is ready to be
 promoted.
+
+---
+
+## 6. Decision on cross-micro-batch pipelining
+
+### **PIPELINE NOT JUSTIFIED**
+
+Not blocked -- the dependency structure genuinely permits a wavefront, and
+section 5 shows the asynchronous mechanism works and is bit-exact. It is not
+justified because the measured and simulated gain does not repay an invasive
+change to llama.cpp's micro-batch scheduler.
+
+The evidence, in the order it decides the question:
+
+1. **Dependency-aware simulation predicts 1.02-1.05x over the deployed
+   configuration** [SIMULATED, validated against measurement to within 1%].
+   Against an all-NPU serial schedule it looks like 1.30-1.39x, but that is not
+   what is deployed; the runtime already overlaps CPU and NPU inside each matmul
+   by splitting tokens.
+
+2. **The CPU is the bottleneck, not the idle NPU.** In the overlapped schedule
+   CPU utilisation is 92.5-95.7%. Overlap pays when a resource idles; here the
+   idle resource is the NPU, and every operation moved to it still costs the CPU
+   its staging and epilogue.
+
+3. **Attention is the critical path and it grows quadratically** -- 594 ms of
+   the 2K critical path, 1378 ms of the 4K one. It is 35.7% of prefill at 2K and
+   49.0% at 4K. No NPU scheduling shortens it.
+
+4. **More micro-batches make it worse.** 2 -> 4 micro-batches at 4K drops
+   simulated NPU duty from 37.3% to 26.7% and raises CPU utilisation to 95.7%.
+   The 4-micro-batch schedule (4222 ms) loses to today's deployed 2-micro-batch
+   configuration (4090 ms).
+
+5. **The entry price is real.** At 2K, pipelining needs `-ub 1024`, which costs
+   24% before any pipeline gain (922.9 vs 1215.7 tok/s).
+
+6. **The mechanism was tried and is worth a few percent** [MEASURED]. The async
+   spike -- the same submit-without-wait structure a pipeline would use, at a
+   smaller granularity -- returns 1.033-1.085x. That is the empirical check on
+   the simulation, and it agrees with it.
+
+**The perfect-overlap upper bound of 1.32x (2K) / 1.25x (4K) is a ceiling that
+dependencies, CPU saturation and the `-ub` entry price erode to a few percent.
+It should not be quoted as an achievable figure, and the 1.39x from the previous
+pass is withdrawn** (it additionally used the NPU time corrected in section 0).
+
+---
+
+## 7. Cost-model holdout [MEASURED]
+
+`R = 10` in `f = R/(R + n_threads - 1)` was fitted against a sweep at threads
+4/8/15 and prompts 2048/3968. Tested here on thread counts and micro-batch sizes
+**not used to establish it**: threads 3/6/10/12 x prompts 1024/1536/3072/3968,
+auto against every fixed tile allocation, 2 interleaved reps. The chosen tile
+count is read back from the dispatch counter, not assumed.
+
+| threads | prompt | auto pick | auto tok/s | best pick | best tok/s | regret |
+|---:|---:|---:|---:|---:|---:|---:|
+| 3 | 1024 | 1 | 606.2 | 1 | 607.7 | 1.003x |
+| 3 | 1536 | 1 | 420.6 | 1 | 420.5 | 1.000x |
+| 3 | 3072 | 3 | 381.1 | 3 | 382.5 | 1.004x |
+| 3 | 3968 | 3 | 289.3 | 3 | 328.5 | *1.135x* |
+| 6 | 1024 | 1 | 826.7 | 1 | 827.1 | 1.001x |
+| 6 | 1536 | 1 | 850.3 | 1 | 844.1 | 0.993x |
+| 6 | 3072 | 2 | 568.3 | 2 | 579.2 | 1.019x |
+| 6 | 3968 | 2 | 512.8 | 3 | 517.6 | 1.009x |
+| 10 | 1024 | 1 | 943.3 | 1 | 925.6 | 0.981x |
+| 10 | 1536 | 1 | 1056.6 | 1 | 1058.6 | 1.002x |
+| 10 | 3072 | 2 | 802.7 | 1 | 795.6 | 0.991x |
+| 10 | 3968 | 2 | 771.9 | 1 | 765.7 | 0.992x |
+| 12 | 1024 | 1 | 963.8 | **0** | 1011.3 | **1.049x** |
+| 12 | 1536 | 1 | 1115.9 | 1 | 1138.6 | 1.020x |
+| 12 | 3072 | 2 | 882.8 | 1 | 888.9 | 1.007x |
+| 12 | 3968 | 2 | 866.2 | 1 | 858.6 | 0.991x |
+
+**Exact match 10/16 (62%), mean regret 1.012x, worst 1.135x.**
+
+Both extremes need reading carefully:
+
+- **The worst regret is not a model error.** At threads=3 / pp3968 auto and the
+  exhaustive best chose the *same* tile count (3). The 13.5% gap is run-to-run
+  variance at the slowest configuration in the sweep, where each measurement is a
+  ~14 s prefill and only 2 reps were taken. It bounds the noise floor of this
+  holdout, not the model.
+- **Six of the sixteen "mismatches" are noise in the other direction**: three
+  have regret **below 1.0**, meaning auto beat the allocation the sweep called
+  best, which is only possible if the "best" was noise. Two more are within 0.9%.
+- **One genuine error**: threads=12 / pp1024, where the model takes the single
+  available tile and CPU-only would have been 4.9% faster. With a 1024-token
+  micro-batch there is exactly one tile, so the split is all-or-nothing; that is
+  the coarsest case the quantisation produces, and it is where the model should
+  be expected to miss.
+
+**Verdict: R=10 performs adequately -- 1.2% mean regret across held-out
+configurations. No added model complexity is warranted**, per the brief. The one
+worthwhile refinement, if it is ever wanted, is a floor that declines the offload
+when only a single tile is available and thread count is high; it is worth ~5% in
+one corner and nothing elsewhere.
+
+---
+
+## 8. Real GPU co-tenant [DEFERRED]
+
+The brief permits a bounded GPU co-tenant experiment **only if a stable local
+ROCm model/runtime already exists**, and says to defer explicitly rather than
+improvise. Surveyed on this machine:
+
+| | |
+|---|---|
+| ROCm (`rocminfo`, `rocm-smi`, `/opt/rocm*`) | **not installed** |
+| `vulkaninfo` / Vulkan loader | **not present** |
+| PyTorch (any backend) | **not importable** |
+| `ollama` | **not installed** |
+| `/usr/bin/lemonade` | present, but its cache is **6 KB (a `config.json`, no model weights)** |
+| HuggingFace cache | **53 KB**, holding only the BitNet GGUF metadata |
+| Any GGUF > 100 MB on disk | only `models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf` |
+| iGPU busy | 0% |
+
+There is no GPU inference stack with a model on this machine. Standing one up
+means installing a runtime *and* downloading a model, which the brief rules out,
+and the only local model is BitNet I2_S, which no GPU backend supports anyway.
+
+**DEFERRED.** The synthetic CPU co-tenant result from the previous pass
+therefore still stands unchallenged, and the open question is unchanged: whether
+unified-memory bandwidth contention between a GPU worker and the NPU controller
+changes the deployment recommendation. Nothing measured here bears on it.
+
+To run it later, the cheapest honest setup is a Vulkan-backend llama.cpp build
+plus one small dense GGUF for the GPU worker, with the controller unchanged.
+
+---
+
+## 9. Recommended next major engineering change
+
+### **FUSE THE NPU EPILOGUE — remove the staging round-trip**
+
+One recommendation, chosen because it is the largest *measured* inefficiency
+still on the table, the cheapest to implement, and the only candidate that
+carries no correctness risk by construction.
+
+**What is wrong now** [MEASURED, section 2]. Every N-chunk dispatch writes into
+one reused mapped output buffer, so thread 0 must evacuate each chunk's int32
+results into `g_acc` before the next dispatch overwrites them. That copy is
+**162 ms per prefill at the deployed configuration (309 ms at all-NPU), 2.27 GB,
+single-threaded at 14 GB/s, while the other 14 threads are parked at the
+`ggml_barrier`.** The epilogue then reads `g_acc` again to scale it into `dst`.
+With `stage_in` and the epilogue that is ~194 ms, **11.4% of a 1697 ms prefill**,
+spent moving bytes that are about to be read again.
+
+**The change.** Give each dispatch its own region of one output arena
+(`xrt::bo` sub-buffers over a `M_tile x 7680 x 4` = 31.5 MB parent, the pattern
+already used for weights), so nothing is overwritten before it is consumed. The
+multi-threaded epilogue then reads the mapped device buffer directly and writes
+`dst`, and `g_acc` disappears. Traffic per element drops from
+`write g_acc + read g_acc + write dst` to `read mapped + write dst`, and the work
+moves off thread 0 onto all threads.
+
+**Predicted gain: ~1.11x at 2K** (162 ms of 1685 ms), of which the async spike
+already demonstrates 1.033x. This is a *prediction from measurement*, not a
+measured result, and must be verified before it is quoted.
+
+**Why this and not the alternatives:**
+
+| candidate | why not first |
+|---|---|
+| Cross-micro-batch pipeline | 1.02-1.05x simulated, invasive. Section 6. |
+| Kernel tuned toward 25 TOPS | The NPU is idle 75.5% of prefill; making it faster while idle changes little, and the deployed split already balances the engines. |
+| int4 / 2-bit weights over DMA | Measured 1.035x compute last pass; a bandwidth optimisation whose payoff is in NPU **decode**, which is not a goal. |
+| Deep-K accumulation, block fusion, packed residency | **Unmeasured, not disproven.** The previous pass's "~2% data movement" figure covered one specific activation-copy effect only; this pass found a different data-movement cost at 11.4%, so this family deserves measurement rather than dismissal. |
+
+**It also unblocks the thread-starved regime, which is the deployment target.**
+Staging is why the all-NPU assignment (933 tok/s) loses to CPU-only (1015) at 15
+threads: 309 ms of single-threaded copying is added on top of the device time.
+Removing it makes larger NPU shares viable, and larger NPU shares are worth most
+at 2-4 threads, where the previous pass measured the hybrid at 1.55-1.91x and
+0.58x the energy per token.
+
+### The larger target after that, stated honestly
+
+**Attention is 35.7% of prefill at 2K and 49.0% at 4K, growing as O(T^2), and is
+the critical path in every simulated schedule.** It is the only remaining item
+with a ceiling above ~1.15x: removing it entirely would be 1.56x at 2K and 1.96x
+at 4K.
+
+It is explicitly **not** recommended as the next change, because nothing measured
+here says XDNA2 would run it faster. Prefill attention is bandwidth-bound over
+the KV cache rather than MAC-bound, and this pass found the NPU is not the faster
+engine on the arithmetic it already does well. The honest next step for attention
+is a bounded feasibility measurement -- what a flash-attention-shaped kernel
+achieves on aie2p for these shapes -- not an implementation commitment.
+
+---
+
+## 10. Summary
+
+| # | question | answer |
+|---|---|---|
+| 1 | base / branch | base `fb4493e9241cf82b3d1a3b03a0780aa0dc333585` (`next-pass-results`); branch `overlap-de-risk`. `main` untouched at `885df0ca`. |
+| 2 | public-environment cleanup | **Completed** and pushed as an independent first checkpoint. Hostname and ZFS/cmdline identifiers removed from HEAD; `tools/capture_environment.sh` sanitizes by construction; `tools/scan_artifacts.sh` verified against a synthetic file containing all six leak classes. History not rewritten. |
+| 3 | CPU-residue decomposition | **[MEASURED]** 2K: attention 599 ms (35.7%), FFN projections 650 ms, attention projections 159 ms, norm 90, relu^2 50, k/v 84, rope 17, residual 21, lm_head 6. 4K: attention **1988 ms (49.0%)**, everything else roughly 2x its 2K value. Node time accounts for 99.6-100.0% of graph span. |
+| 4 | current NPU duty cycle | **[MEASURED]** **24.5%** at the deployed point (15 threads, `-ub 2048`); 33.6% if given every token tile. Corrects 32.0%/44.6% from the previous pass (section 0). |
+| 5 | perfect-overlap limit | **[UPPER BOUND]** **1.32x** at 2K, **1.25x** at 4K -- and *falling* with context, because the residue grows O(T^2) while NPU work grows O(T). |
+| 6 | dependency-constrained overlap | **[SIMULATED]** 1.38x (2K) / 1.30x (4K) against an all-NPU serial schedule, but **1.05x (2K) / 1.02x (4K) against the deployed configuration**. Simulator validated to within 1% of measurement. CPU utilisation 92.5-95.7%. |
+| 7 | async sibling spike | **[MEASURED]** Mechanism works, bit-exact: **1.033x** (pp2048 ub2048), **1.033x** (pp3968 ub2048), **1.085x** (pp2048 ub1024), 5 interleaved reps. Off by default, ready to promote. |
+| 8 | cost-model holdout | **[MEASURED]** 10/16 exact, **mean regret 1.012x**. One genuine 4.9% miss (12 threads / 1024 tokens, single-tile all-or-nothing). R=10 adequate; no added complexity warranted. |
+| 9 | GPU co-tenant | **[DEFERRED]** -- no ROCm, no Vulkan, no torch, no GPU-runnable model on this machine. Survey in section 8. |
+| 10 | recommendation | **FUSE THE NPU EPILOGUE** -- remove the staging round-trip. Section 9. |
+
+### Three claims withdrawn this pass
+
+1. **NPU duty cycle / busy time** -- warmup prefill was double-counted. Idle is
+   75.5%, not 68%. Independently corroborated by in-model throughput finally
+   matching the standalone kernel.
+2. **"The CPU is the faster GEMM engine by ~1.3x"** -- the three-equation solve
+   assumed an identical residue between CPU-only and hybrid, which the corrected
+   numbers make impossible. The supportable statement is that the engines are of
+   broadly comparable throughput.
+3. **"Data movement is worth ~2%"** -- that figure covered one specific
+   activation-copy effect. A different data-movement cost on the same path
+   measures 11.4%. Deep-K accumulation, fusion and packed residency are
+   **unmeasured, not disproven.**
+
+### Reproduction
+
+```bash
+# environment + public-artifact hygiene
+bash tools/capture_environment.sh && bash tools/scan_artifacts.sh
+
+# build (llamafile OFF; XDNA runtime + node profiler compiled in)
+cmake --build refs/BitNet/build-xdna3 -j24 && make          # tests
+BITNET_XDNA_ARTIFACTS=$PWD/artifacts/xclbin-tuned make check
+
+export BITNET_XDNA_ARTIFACTS=$PWD/artifacts/xclbin-tuned
+python3 tools/baseline_check.py                             # Task 1
+python3 tools/duty_cycle2.py                                # Task 0 correction
+python3 tools/residue_breakdown.py --prompt 2048 --ub 2048 1024 \
+        --modes hybrid cpu --out artifacts/overlap-de-risk/residue_2k.csv
+python3 tools/residue_breakdown.py --prompt 3968 --ub 2048 1024 \
+        --modes hybrid cpu --out artifacts/overlap-de-risk/residue_4k.csv
+python3 tools/pipeline_sim.py \
+        --residue artifacts/overlap-de-risk/residue_{2k,4k}.csv \
+        --allnpu  artifacts/overlap-de-risk/residue_{2k,4k}_allnpu.csv
+python3 tools/async_ab.py                                   # Task 5
+python3 tools/cost_model_holdout.py                         # Task 7
+```
+
+Measurement discipline throughout: interleaved round-robin (never blocked),
+>= 3 reps exploratory / >= 5 for sub-10% claims, medians with dispersion,
+background load and NPU device time recorded per run, and process reaping by
+explicit PID only -- `pkill -f <pattern>` matches this harness's own command line
+and has killed it repeatedly in earlier passes.
