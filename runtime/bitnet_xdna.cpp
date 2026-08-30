@@ -104,6 +104,16 @@ std::vector<int32_t> g_acc;
 int64_t g_acc_N = 0;
 std::map<const void *, std::unique_ptr<Resident>> g_resident;
 std::atomic<uint64_t> g_repack_ns{0};
+/* CPU-side cost of USING the NPU, as opposed to the NPU's own device time:
+ * the int32->f32 epilogue, and staging activations into the mapped buffer.
+ * Measured because at an all-NPU assignment these dominate the offloaded nodes
+ * even though no GEMM work remains on the CPU. */
+std::atomic<uint64_t> g_epilogue_ns{0};
+/* Staging: activations INTO the mapped A buffer, and results OUT of the mapped
+ * C buffer into g_acc. Both run single-threaded on thread 0 inside accumulate,
+ * while every other thread is parked at the ggml barrier. */
+std::atomic<uint64_t> g_stage_in_ns{0}, g_stage_out_ns{0}, g_stage_out_bytes{0};
+std::atomic<uint64_t> g_epilogue_elems{0};
 
 /* Per-shape dispatch accounting. The aggregate mean (2.66 ms) sits well above
  * the weighted mean of the three kernels measured standalone (1.44 ms), and an
@@ -237,6 +247,20 @@ static void print_stats_atexit(void) {
         n ? xdna::Program::dispatch_ms() / (double)n : 0.0,
         g_repack_ns.load() / 1e6,
         g_resident_bytes.load() / 1048576.0);
+    {
+        const double ep_ms = g_epilogue_ns.load() / 1e6;
+        const double el    = (double)g_epilogue_elems.load();
+        std::fprintf(stderr,
+            "[bitnet-xdna] epilogue=%.1f thread-ms over %.0f Melem "
+            "(summed across threads; divide by nth for wall)\n", ep_ms, el / 1e6);
+        const double in_ms  = g_stage_in_ns.load()  / 1e6;
+        const double out_ms = g_stage_out_ns.load() / 1e6;
+        const double out_gb = g_stage_out_bytes.load() / 1e9;
+        std::fprintf(stderr,
+            "[bitnet-xdna] stage_in=%.1f ms  stage_out=%.1f ms over %.2f GB "
+            "(%.1f GB/s, SINGLE-THREADED on thread 0 while others wait)\n",
+            in_ms, out_ms, out_gb, out_ms > 0 ? out_gb / (out_ms * 1e-3) : 0.0);
+    }
     double si, su, wa, so;
     xdna::Program::breakdown_ms(&si, &su, &wa, &so);
     const double tot = si + su + wa + so;
@@ -380,12 +404,16 @@ int bitnet_xdna_accumulate(const void *src0_i2s, int64_t K, int64_t N,
                 const int64_t k_off  = (int64_t)kc * kKChunk;
                 const int64_t k_keep = std::min(kKChunk, K - k_off);
 
+                const auto si0 = std::chrono::steady_clock::now();
                 if (rows < kMTile || k_keep < kKChunk)
                     std::memset(a_bo, 0, (size_t)(kMTile * kKChunk));
                 for (int64_t r = 0; r < rows; ++r)
                     std::memcpy(a_bo + r * kKChunk,
                                 a_q + (size_t)(t0 + r) * a_row_stride + k_off,
                                 (size_t)k_keep);
+                g_stage_in_ns.fetch_add((uint64_t)std::chrono::duration_cast<
+                    std::chrono::nanoseconds>(std::chrono::steady_clock::now() - si0).count(),
+                    std::memory_order_relaxed);
                 prog->sync_a();                     // once per K slice, not per N chunk
 
                 for (int nc = 0; nc < plan.n_chunks; ++nc) {
@@ -408,9 +436,15 @@ int bitnet_xdna_accumulate(const void *src0_i2s, int64_t K, int64_t N,
                     }
 
                     if (plan.k_chunks == 1) {
+                        const auto so0 = std::chrono::steady_clock::now();
                         for (int64_t r = 0; r < rows; ++r)
                             std::memcpy(g_acc.data() + (t0 + r) * N + n_off,
                                         c_bo + r * kNChunk, (size_t)(n_keep * 4));
+                        g_stage_out_ns.fetch_add((uint64_t)std::chrono::duration_cast<
+                            std::chrono::nanoseconds>(std::chrono::steady_clock::now() - so0).count(),
+                            std::memory_order_relaxed);
+                        g_stage_out_bytes.fetch_add((uint64_t)(rows * n_keep * 4),
+                            std::memory_order_relaxed);
                     } else {
                         // Summing partials over K is exact in int32:
                         // |sum| <= K * 127 * 1 fits comfortably.
@@ -436,12 +470,16 @@ void bitnet_xdna_epilogue(int64_t N, int64_t row_begin, int64_t row_end,
                           const float *act_scales, float ws,
                           float *dst, size_t dst_row_stride) {
     (void)g_acc_N;
+    const auto ep_t0 = std::chrono::steady_clock::now();
     for (int64_t t = row_begin; t < row_end; ++t) {
         const float post = ws / act_scales[t];
         const int32_t *acc = g_acc.data() + t * N;
         float *drow = (float *)((char *)dst + (size_t)t * dst_row_stride);
         for (int64_t j = 0; j < N; ++j) drow[j] = (float)acc[j] * post;
     }
+    g_epilogue_ns.fetch_add((uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - ep_t0).count(), std::memory_order_relaxed);
+    g_epilogue_elems.fetch_add((uint64_t)((row_end - row_begin) * N), std::memory_order_relaxed);
 }
 
 int64_t bitnet_xdna_token_split_nt(int64_t n_tokens, int n_threads) {
@@ -471,6 +509,7 @@ int64_t bitnet_xdna_token_split_nt(int64_t n_tokens, int n_threads) {
 uint64_t bitnet_xdna_dispatches(void)     { return xdna::Program::dispatch_count(); }
 double   bitnet_xdna_dispatch_ms(void)    { return xdna::Program::dispatch_ms(); }
 double   bitnet_xdna_repack_ms(void)      { return g_repack_ns.load() / 1e6; }
+double   bitnet_xdna_epilogue_ms(void)    { return g_epilogue_ns.load() / 1e6; }
 uint64_t bitnet_xdna_resident_bytes(void) { return g_resident_bytes.load(); }
 void     bitnet_xdna_reset_counters(void) { xdna::Program::reset_counters(); }
 

@@ -27,14 +27,18 @@ static uint32_t xs32() { rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5; re
 
 struct Case { const char *name; const char *file; int64_t K, N; };
 
-static int run_case(const Case &c, int64_t T) {
-    const size_t packed = i2s_packed_bytes(c.K, c.N);
-    std::vector<uint8_t> blob(packed + 4);
-    FILE *f = std::fopen(c.file, "rb");
-    if (!f) { std::printf("    cannot open %s\n", c.file); return 1; }
-    const size_t got = std::fread(blob.data(), 1, packed + 4, f);
-    std::fclose(f);
-    if (got != packed + 4) { std::printf("    short read\n"); return 1; }
+/* The weight blob must OUTLIVE every call for a given tensor.
+ *
+ * bitnet_xdna caches uploaded weights keyed by the tensor's data pointer, which
+ * in production is an mmap'd GGUF tensor and therefore stable for the model's
+ * life. When this test allocated the blob inside run_case, the allocator handed
+ * a later shape the address a freed earlier shape had used; the cache then
+ * matched on a stale pointer. The runtime failed safe -- get_resident validates
+ * the cached K/N and declined rather than returning wrong data -- but every
+ * chunked shape was skipped, so the suite reported "declined" instead of
+ * exercising the paths it exists to cover. Loading once per tensor and keeping
+ * it alive reproduces production pointer semantics. */
+static int run_case(const Case &c, int64_t T, const std::vector<uint8_t> &blob) {
 
     // Oracle operands: real ternary weights, deterministic int8 activations.
     std::vector<uint8_t> codes((size_t)(c.K * c.N));
@@ -52,7 +56,7 @@ static int run_case(const Case &c, int64_t T) {
     std::vector<int32_t> act_sums((size_t)T, 0);
     std::vector<float>   dst((size_t)(T * c.N), 0.0f);
 
-    if (!bitnet_xdna_accumulate(blob.data(), c.K, c.N, a.data(), T, (size_t)c.K)) {
+    if (!bitnet_xdna_accumulate((const void *)blob.data(), c.K, c.N, a.data(), T, (size_t)c.K)) {
         std::printf("    NPU declined this shape\n");
         return 1;
     }
@@ -99,9 +103,21 @@ int main() {
         return 77;
     }
     int fails = 0;
+    // Load every tensor first and hold it for the whole run, so each tensor has
+    // one stable address exactly as an mmap'd GGUF tensor does.
+    std::vector<std::vector<uint8_t>> blobs;
     for (const auto &c : cases) {
-        std::printf("  %s\n", c.name);
-        for (int64_t T : token_counts) fails += run_case(c, T);
+        const size_t packed = i2s_packed_bytes(c.K, c.N);
+        blobs.emplace_back(packed + 4);
+        FILE *f = std::fopen(c.file, "rb");
+        if (!f) { std::printf("  cannot open %s\n", c.file); return 1; }
+        const size_t got = std::fread(blobs.back().data(), 1, packed + 4, f);
+        std::fclose(f);
+        if (got != packed + 4) { std::printf("  short read %s\n", c.file); return 1; }
+    }
+    for (size_t i = 0; i < sizeof(cases)/sizeof(cases[0]); ++i) {
+        std::printf("  %s\n", cases[i].name);
+        for (int64_t T : token_counts) fails += run_case(cases[i], T, blobs[i]);
     }
     if (fails) { std::printf("\n%d FAILURE(S)\n", fails); return 1; }
     std::printf("\nall shapes bit-exact\n");

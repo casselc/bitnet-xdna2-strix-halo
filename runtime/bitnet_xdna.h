@@ -96,6 +96,9 @@ void bitnet_xdna_epilogue(int64_t N, int64_t row_begin, int64_t row_end,
 uint64_t bitnet_xdna_dispatches(void);
 double   bitnet_xdna_dispatch_ms(void);
 double   bitnet_xdna_repack_ms(void);
+/* CPU-side cost of USING the NPU rather than the NPU's own device time:
+ * the int32->f32 epilogue that converts the NPU's accumulators. */
+double   bitnet_xdna_epilogue_ms(void);
 uint64_t bitnet_xdna_resident_bytes(void);
 void     bitnet_xdna_reset_counters(void);
 

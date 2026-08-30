@@ -110,3 +110,138 @@ Also verified:
   `30 layers x 11 dispatches x 2 token tiles x (147/150 offloaded tensors) = 646`.
 - Governor `powersave` (amd-pstate EPP default), boost enabled; package 54-73 C
   across the batch; load average recorded per row.
+
+---
+
+## 2. What the CPU-side residue actually is [MEASURED]
+
+Instrumented with `runtime/ggml_node_profile.c`, which brackets every ggml graph
+node on thread 0 between "before compute" and "after `ggml_barrier`". Because
+ggml barriers after every node those intervals tile the graph exactly, and the
+measurement confirms it: **node durations sum to 99.6-100.0% of the graph span**
+in every configuration. There is no pool of hidden scheduler overhead.
+
+Enabled at runtime by `BITNET_PROFILE=<path>`; with it unset the same binary
+reproduces the baseline exactly (1224/1029 tok/s vs 1216/1024), so profiling does
+not perturb what it measures.
+
+NPU device time is attributed per node from the XDNA dispatch-time counter, so
+"NPU time" and "CPU work inside an offloaded node" are separately measured.
+Raw: `residue_2k.csv`, `residue_4k.csv`, `residue_*_allnpu.csv`.
+
+### Whole prefill, 15 threads, `-ub 2048` (ms)
+
+| category | pp2048 hybrid | pp2048 CPU-only | pp3968 hybrid | pp3968 CPU-only |
+|---|---:|---:|---:|---:|
+| **attention** (`FLASH_ATTN_EXT`) | **599** | 594 | **1988** | 1975 |
+| ffn_gate | 209 (111 NPU) | 302 | 405 (223 NPU) | 584 |
+| ffn_up | 213 (110 NPU) | 301 | 417 (222 NPU) | 580 |
+| ffn_down | 228 (110 NPU) | 295 | 437 (219 NPU) | 566 |
+| attn_q_proj | 79 (37 NPU) | 120 | 152 (74 NPU) | 231 |
+| attn_out_proj | 80 (38 NPU) | 114 | 155 (74 NPU) | 219 |
+| norm (121 nodes) | 90 | 96 | 171 | 187 |
+| ffn_activation (relu^2) | 50 | 55 | 94 | 104 |
+| attn_k_proj | 42 | 39 | 74 | 77 |
+| attn_v_proj | 42 | 43 | 74 | 83 |
+| residual_add | 21 | 23 | 40 | 45 |
+| rope | 17 | 19 | 33 | 37 |
+| lm_head | 6 | 7 | 12 | 14 |
+| kv_cache_write | 3 | 3 | 5 | 6 |
+| **total** | **1679** | 2010 | **4056** | 4709 |
+| of which NPU device time | 406 (24.2%) | 0 | 811 (20.0%) | 0 |
+
+### Attention dominates, and it is growing
+
+**Attention is 599 ms (35.7%) of hybrid prefill at 2K and 1988 ms (49.0%) at 4K**
+-- 3.3x more time for 1.94x more tokens, i.e. the expected O(T^2). At 4K it is
+larger than every NPU-eligible projection combined, and it runs entirely on CPU.
+
+This directly answers the question the pass was set to ask. The perfect-overlap
+bound is `total / max(NPU, CPU-residue)`, and the residue is dominated by a term
+that grows quadratically while NPU work grows linearly:
+
+| context | NPU work | CPU residue | **[UPPER BOUND]** perfect overlap |
+|---|---:|---:|---:|
+| pp2048 | 406 ms | 1273 ms | **1.32x** |
+| pp3968 | 811 ms | 3245 ms | **1.25x** |
+
+**The upper bound falls as context grows, and it is well below the 1.39x claimed
+last pass** (which used the inflated NPU time corrected in section 0). This is a
+theoretical ceiling assuming zero dependency constraints; section 4 computes what
+the real DAG permits.
+
+### The micro-batch structure, which is what pipelining would exploit
+
+At `-ub 1024`, pp2048 (2 micro-batches, per-position medians):
+
+| category | mb0 | mb1 |
+|---|---:|---:|
+| attention | 159.4 ms | **414.9 ms** |
+| ffn_gate/up/down | 540.8 ms | 542.2 ms |
+| attn_q + attn_out | 146.1 ms | 145.0 ms |
+| everything else | 122.6 ms | 120.9 ms |
+| **span** | **970.9 ms** | **1224.6 ms** |
+
+Attention is the only category that differs, and it differs by 2.6x -- mb1
+attends to roughly three times the keys mb0 does. Everything else is flat, as it
+must be. Sum across micro-batches reproduces the whole-prefill figure (159+415 =
+574 ms vs 599 ms measured with a single micro-batch).
+
+**But note what `-ub 1024` costs to obtain**: 922.9 tok/s against 1215.7 at
+`-ub 2048`. Cross-micro-batch pipelining at 2K requires at least two
+micro-batches, so it must start from a configuration that is **24% slower**, and
+win that back before it shows any gain at all.
+
+### The largest single inefficiency is not overlap [MEASURED]
+
+Forcing every token tile to the NPU (`BITNET_XDNA_TILES=2`) isolates the cost of
+*using* the device from the cost of its arithmetic. Per prefill at 2K:
+
+| | all-NPU | auto split (deployed) |
+|---|---:|---:|
+| NPU device time | 745 ms | 399 ms |
+| **`stage_out`** (mapped C buffer -> `g_acc`) | **309 ms**, 4.54 GB | **162 ms**, 2.27 GB |
+| `stage_in` (activations -> mapped A buffer) | 58 ms | 32 ms |
+| epilogue (int32->f32), wall | ~80 ms | ~40 ms |
+
+`stage_out` is a `memcpy` of the NPU's int32 results out of the mapped output
+buffer, running **single-threaded on thread 0 at 14 GB/s while the other 14
+threads are parked at the `ggml_barrier`**. At the deployed configuration that
+is **~194 ms per prefill, 11.4% of the 1697 ms wall**, spent moving bytes that
+the epilogue is about to read again.
+
+It exists because thread 0 issues every N-chunk dispatch into one reused mapped C
+buffer, so results must be evacuated before the next dispatch overwrites them.
+Giving the dispatches distinct output regions would let the epilogue -- which
+already touches every one of these elements, across all threads -- read the
+mapped buffer directly, removing the copy rather than parallelising it.
+
+**This is a bigger, cheaper and lower-risk win than anything overlap offers at
+2K, and unlike overlap it needs no change to llama.cpp's scheduler.**
+
+### Correction: the shape tests were not exercising the chunked paths
+
+`tests/test_xdna_shapes.cpp` allocated its weight blob inside `run_case` and
+freed it on return. `bitnet_xdna` caches uploaded weights keyed by the tensor's
+data pointer -- stable in production because GGUF tensors are mmap'd -- so the
+allocator handed a later shape an address a freed earlier shape had used, and
+the cache matched on a stale pointer.
+
+The runtime **failed safe**: `get_resident` validates the cached K/N and declined
+rather than returning wrong data. But every chunked shape was skipped, so a suite
+that reported "NPU declined this shape" was recorded as passing coverage. This
+failure is present at the base commit `fb4493e` and is not a regression from this
+pass.
+
+Fixed by loading each tensor once in `main` and holding it for the whole run,
+which reproduces production pointer semantics. All twelve cases now pass
+bit-exact, including the paths most likely to be wrong:
+
+```
+attn_q / attn_output (1 N-chunk, 1 K-chunk)      T=1024/1536/2048  bit-exact
+ffn_gate / ffn_up    (3 N-chunks, 6912->7680)    T=1024/1536/2048  bit-exact
+ffn_down             (3 K-chunks, int32 accum)   T=1024/1536/2048  bit-exact
+```
+
+Perplexity unchanged and identical across backends: `307.5806 +/- 27.85495` for
+both `BITNET_XDNA=0` and `=1`, matching the recorded baseline.

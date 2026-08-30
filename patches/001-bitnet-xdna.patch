@@ -1,8 +1,8 @@
 diff --git a/ggml/src/ggml-cpu/CMakeLists.txt b/ggml/src/ggml-cpu/CMakeLists.txt
-index fd5ba9989..87f21c7d3 100644
+index fd5ba9989..6e0b30770 100644
 --- a/ggml/src/ggml-cpu/CMakeLists.txt
 +++ b/ggml/src/ggml-cpu/CMakeLists.txt
-@@ -59,6 +59,21 @@ function(ggml_add_cpu_backend_variant_impl tag_name)
+@@ -59,6 +59,22 @@ function(ggml_add_cpu_backend_variant_impl tag_name)
      target_compile_features(${GGML_CPU_NAME} PRIVATE c_std_11 cxx_std_17)
      target_include_directories(${GGML_CPU_NAME} PRIVATE . ggml-cpu ../../../../include)
  
@@ -14,10 +14,11 @@ index fd5ba9989..87f21c7d3 100644
 +        target_sources(${GGML_CPU_NAME} PRIVATE
 +            ${BITNET_XDNA_RUNTIME_DIR}/bitnet_xdna.cpp
 +            ${BITNET_XDNA_RUNTIME_DIR}/xdna_gemm.cpp
-+            ${BITNET_XDNA_RUNTIME_DIR}/bitnet_i2s.c)
++            ${BITNET_XDNA_RUNTIME_DIR}/bitnet_i2s.c
++            ${BITNET_XDNA_RUNTIME_DIR}/ggml_node_profile.c)
 +        target_include_directories(${GGML_CPU_NAME} PRIVATE
 +            ${BITNET_XDNA_RUNTIME_DIR} ${BITNET_XDNA_XRT_INCLUDE})
-+        target_compile_definitions(${GGML_CPU_NAME} PRIVATE GGML_BITNET_XDNA)
++        target_compile_definitions(${GGML_CPU_NAME} PRIVATE GGML_BITNET_XDNA GGML_BITNET_PROFILE)
 +        target_link_libraries(${GGML_CPU_NAME} PRIVATE xrt_coreutil)
 +    endif()
 +
@@ -25,10 +26,10 @@ index fd5ba9989..87f21c7d3 100644
          find_library(ACCELERATE_FRAMEWORK Accelerate)
          if (ACCELERATE_FRAMEWORK)
 diff --git a/ggml/src/ggml-cpu/ggml-cpu.c b/ggml/src/ggml-cpu/ggml-cpu.c
-index ec88ef29a..2738ca14d 100644
+index ec88ef29a..71e7b4b68 100644
 --- a/ggml/src/ggml-cpu/ggml-cpu.c
 +++ b/ggml/src/ggml-cpu/ggml-cpu.c
-@@ -56,6 +56,13 @@
+@@ -56,6 +56,17 @@
  #include "ggml-bitnet.h"
  #endif
  
@@ -39,10 +40,14 @@ index ec88ef29a..2738ca14d 100644
 +#include <stdatomic.h>
 +#endif
 +
++#ifdef GGML_BITNET_PROFILE
++#include "ggml_node_profile.h"
++#endif
++
  #ifdef GGML_USE_CPU_RISCV64_SPACEMIT
  #    include "spacemit/ime.h"
  #endif
-@@ -1492,7 +1499,111 @@ UseGgmlGemm2:;
+@@ -1492,7 +1503,111 @@ UseGgmlGemm2:;
      if (src0->type == GGML_TYPE_I2_S && ggml_n_dims(src0) == 2) {
          const void * src1_wdata = (src1->type == vec_dot_type) ? src1->data : params->wdata;
          const size_t i2s_row_size = ggml_row_size(vec_dot_type, ne10);
@@ -155,3 +160,43 @@ index ec88ef29a..2738ca14d 100644
  
          const int64_t matmul_num_cols = 4; // gemm processes 4 columns at a time
          int64_t src0_start = (ith * ne01) / nth;
+@@ -3228,6 +3343,10 @@ static thread_ret_t ggml_graph_compute_thread(void * data) {
+     GGML_PRINT_DEBUG("thread #%d compute-start cplan %p last-graph %d\n", state->ith, (const void *)cplan, state->last_graph);
+ #endif
+ 
++#ifdef GGML_BITNET_PROFILE
++    if (state->ith == 0 && bnp_enabled()) bnp_graph_begin(cgraph->n_nodes);
++#endif
++
+     for (int node_n = 0; node_n < cgraph->n_nodes && atomic_load_explicit(&tp->abort, memory_order_relaxed) != node_n; node_n++) {
+         struct ggml_tensor * node = cgraph->nodes[node_n];
+ 
+@@ -3240,6 +3359,16 @@ static thread_ret_t ggml_graph_compute_thread(void * data) {
+             continue;
+         }
+ 
++#ifdef GGML_BITNET_PROFILE
++        // Thread 0 brackets the node. Every node is computed by all threads and
++        // followed by ggml_barrier(), so [begin, after-barrier) on thread 0 is
++        // this node's true wall-clock contribution and the intervals tile the
++        // graph. Runtime-gated by BITNET_PROFILE; unset costs two branches.
++        const int bnp_idx = node_n;
++        const bool bnp_rec = (state->ith == 0) && bnp_enabled();
++        if (bnp_rec) bnp_node_begin(bnp_idx);
++#endif
++
+         // TODO: move fused-op detection into ggml_graph_plan so fusion decisions are made once at planning time
+         // Try fused ops, fall back to normal compute
+         const int n_fused = ggml_cpu_try_fuse_ops(cgraph, node_n, &params, cplan);
+@@ -3258,6 +3387,11 @@ static thread_ret_t ggml_graph_compute_thread(void * data) {
+         if (node_n + 1 < cgraph->n_nodes) {
+             ggml_barrier(state->threadpool);
+         }
++
++#ifdef GGML_BITNET_PROFILE
++        // After the barrier: all threads have finished this node.
++        if (bnp_rec) bnp_node_end(bnp_idx, node);
++#endif
+     }
+ 
+ #ifdef GGML_USE_OPENMP
