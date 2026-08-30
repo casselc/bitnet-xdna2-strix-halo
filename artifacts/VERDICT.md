@@ -99,13 +99,29 @@ kernel-engineering question in a single file, answerable without touching the
 integration — which is finished, correct, and instrumented.
 
 Two cheaper follow-ups worth folding in:
-1. **int4 weights** — for *footprint and DMA only*. **Correction to an earlier
-   claim in this file:** int4 does **not** double MAC throughput on this part.
-   AMD's AI Engine-ML intrinsics guide states the `8b x 4b` group is *"emulated
-   on top of int8 x int8"*, and only one shape exists (`4x16_16x8`). So int4
-   buys halved weight traffic (1843 -> 922 MiB resident) and nothing in TOPS.
-   Still worth doing for residency and for any future decode path, but it is not
-   the 2x free lunch this document originally asserted.
+1. **int4 weights.** This entry has been corrected twice; here is the settled
+   evidence. On **aie2p (`__AIE_ARCH__ == 21`, our part)**,
+   `aie::mmul<4,16,16,int8,int4,32>` compiles to a **single native intrinsic**,
+   `mac_4x16_16x16_conf` — 4x16x16 = **1024 MACs per instruction**, against
+   `mac_8x8_8x8`'s 512 for int8xint8. The B operand is also twice as wide in bits
+   (256 x int4 = 1024b vs 64 x int8 = 512b), which is what a genuinely wider
+   datapath looks like.
+
+   The "emulated on top of int8 x int8" description an intermediate review cited
+   is real, but it describes **`__AIE_ARCH__ == 22` (aie2ps)** — a different
+   generation — whose branch in the same header does
+   `interleave_unzip` + **two** `mac_4x8_8x16_conf` calls with `unpack_sign`.
+   Reading that branch and attributing it to this part produced the wrong
+   correction; the source is
+   `.venv/.../mlir_aie/include/aie_api/detail/aie2p/mmul_8_4.hpp:23` (arch 21)
+   vs `:46` (arch 22).
+
+   So int4 plausibly buys **both** 2x compute and 2x less weight DMA, and BitNet's
+   ternary values fit int4 exactly with no accuracy loss.
+   **Remaining caveat: issue latency is not knowable from the headers.** If the
+   1024-MAC instruction issues in two cycles rather than one, the throughput is
+   unchanged and only the DMA saving is real. Settling it needs a microbenchmark
+   with a custom kernel, since IRON's `kernels.mm()` exposes no int4 combination.
 2. **Concurrent split** rather than exclusive offload: give the NPU a fraction of
    the output rows and the CPU the rest simultaneously. Today thread 0 dispatches
    while 15 threads idle on a barrier; measured NPU/CPU concurrency on Strix Halo
