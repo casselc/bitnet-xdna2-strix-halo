@@ -29,6 +29,18 @@ int bitnet_xdna_supports(int64_t K, int64_t N);
 /* Is this token count worth a dispatch? */
 int bitnet_xdna_worth_it(int64_t n_tokens);
 
+/* How many of the batch's tokens should the NPU take, so that the NPU and the
+ * CPU threads can work on disjoint token ranges at the same time?
+ *
+ * Exclusive offload leaves 16 cores idle on a barrier for ~76% of a prefill,
+ * which is why the hybrid loses despite the NPU being the faster engine for the
+ * arithmetic. Splitting the batch lets both run.
+ *
+ * Returns a multiple of the NPU's token tile (so no dispatch is padded), or the
+ * whole batch when it is too small to divide. 0 means "leave it all to the CPU".
+ * The fraction is BITNET_XDNA_SPLIT (default 0.5; 1.0 restores exclusive offload). */
+int64_t bitnet_xdna_token_split(int64_t n_tokens);
+
 /* Compute dst = ((W_ternary . a_q) ) * (ws / act_scale[t]) for a whole batch.
  *
  *   src0_i2s   packed I2_S weight blob for an [N,K] tensor (scale lives inside)

@@ -38,8 +38,8 @@ test_i2s_realdata  artifacts/correctness/tensors/attn_q_l0.packed  [K=2560 N=256
 
   ok  real GGUF weights decode cleanly under our layout
 === NPU tests ===
-test_xdna_gemm  [M=512 K=2560 N=2560]  weights: artifacts/correctness/tensors/attn_q_l0.packed
-  cpu reference: 357.5 ms (scalar, single-threaded oracle)
-  npu: 21 dispatches, 1.320 ms mean round trip
+test_xdna_gemm  [M=1024 K=2560 N=2560]  weights: artifacts/correctness/tensors/attn_q_l0.packed
+  cpu reference: 738.4 ms (scalar, single-threaded oracle)
+  npu: 21 dispatches, 1.397 ms mean round trip
 
-  ok  all 1310720 int32 accumulators BIT-EXACT vs CPU reference
+  ok  all 2621440 int32 accumulators BIT-EXACT vs CPU reference

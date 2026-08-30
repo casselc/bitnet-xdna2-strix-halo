@@ -114,7 +114,17 @@ std::atomic<uint64_t> g_resident_bytes{0};
 
 int  g_state = -1;        // -1 unknown, 0 unavailable, 1 available
 std::atomic<int> g_state_fast{-1};   // lock-free mirror of g_state
-int64_t g_min_tokens = 64;
+/* Default to one full NPU tile. A batch smaller than the tile is zero-padded up
+ * to it, so the NPU does a full tile's work for a fraction of the useful output
+ * -- at ne11=512 against a 1024 tile that is 2x waste, and measurably worse than
+ * leaving the batch on the CPU (728 vs 1241 t/s at pp512). Offload only when the
+ * batch can fill a tile. */
+int64_t g_min_tokens = 1024;
+/* Fraction of the token batch given to the NPU. The NPU is the faster engine
+ * per unit of this arithmetic (777 ms vs the CPU's 2009 ms for a whole 2048-token
+ * prefill), so the balance point is above 0.5; the default is deliberately
+ * conservative until measured per machine. */
+double g_split_frac = 0.5;
 
 bool env_truthy(const char *name) {
     const char *v = std::getenv(name);
@@ -224,10 +234,15 @@ int bitnet_xdna_available(void) {
     g_state = 0;
     if (!env_truthy("BITNET_XDNA")) { g_state_fast.store(0, std::memory_order_release); return 0; }
     if (env_truthy("BITNET_XDNA_STATS")) std::atexit(print_stats_atexit);
+    if (const char *sp = std::getenv("BITNET_XDNA_SPLIT")) {
+        const double v = std::strtod(sp, nullptr);
+        if (v >= 0.0 && v <= 1.0) g_split_frac = v;
+    }
     if (const char *m = std::getenv("BITNET_XDNA_MIN_TOKENS")) {
         const long v = std::strtol(m, nullptr, 10);
         if (v > 0) g_min_tokens = v;
     }
+    if (g_min_tokens < kMTile) g_min_tokens = kMTile;
     try { g_state = xdna::device_available() ? 1 : 0; }
     catch (...) { g_state = 0; }
     g_state_fast.store(g_state, std::memory_order_release);
@@ -239,6 +254,24 @@ int bitnet_xdna_supports(int64_t K, int64_t N) {
 }
 
 int bitnet_xdna_worth_it(int64_t n_tokens) { return n_tokens >= g_min_tokens; }
+
+int64_t bitnet_xdna_token_split(int64_t n_tokens) {
+    if (n_tokens <= 0) return 0;
+    /* Below one tile there is nothing to divide: the NPU would pad either way,
+     * so give it the whole batch rather than paying a dispatch for a fraction. */
+    if (n_tokens <= kMTile) return n_tokens;
+
+    const double frac = g_split_frac;
+    if (frac >= 1.0) return n_tokens;
+    if (frac <= 0.0) return 0;
+
+    /* Round to the nearest whole tile so every dispatch is full. */
+    const int64_t tiles = (int64_t)((double)n_tokens / (double)kMTile * frac + 0.5);
+    int64_t t = tiles * kMTile;
+    if (t < kMTile)   t = kMTile;        // always give the NPU at least one tile
+    if (t > n_tokens) t = n_tokens;
+    return t;
+}
 
 int bitnet_xdna_mul_mat(const void *src0_i2s, int64_t K, int64_t N,
                         const int8_t *a_q, int64_t T, size_t a_row_stride,

@@ -1,0 +1,19 @@
+### CPU-only, -ub 2048
+| ------------------------------ | ---------: | ---------: | ---------- | ------: | -------: | --------------: | -------------------: |
+| bitnet-b1.58 2B Q1_0           |   1.10 GiB |     2.41 B | CPU        |      16 |     2048 |           pp512 |        872.61 ± 0.84 |
+| bitnet-b1.58 2B Q1_0           |   1.10 GiB |     2.41 B | CPU        |      16 |     2048 |          pp2048 |      953.63 ± 131.94 |
+| bitnet-b1.58 2B Q1_0           |   1.10 GiB |     2.41 B | CPU        |      16 |     2048 |          pp3968 |        840.47 ± 1.66 |
+| bitnet-b1.58 2B Q1_0           |   1.10 GiB |     2.41 B | CPU        |      16 |     2048 |            tg32 |         80.49 ± 0.59 |
+
+build: 390c30775 (9918)
+
+### HYBRID concurrent, -ub 2048, split 0.5
+| bitnet-b1.58 2B Q1_0           |   1.10 GiB |     2.41 B | CPU        |      16 |     2048 |          pp2048 |      1145.96 ± 14.89 |
+| bitnet-b1.58 2B Q1_0           |   1.10 GiB |     2.41 B | CPU        |      16 |     2048 |          pp3968 |        870.52 ± 9.08 |
+| bitnet-b1.58 2B Q1_0           |   1.10 GiB |     2.41 B | CPU        |      16 |     2048 |            tg32 |         80.76 ± 0.91 |
+
+[bitnet-xdna] dispatches=3852  dispatch_total=5040.1 ms  mean=1.308 ms
+[bitnet-xdna] weight repack+upload=1088.6 ms  resident int8 weights=2006.2 MiB
+[bitnet-xdna] sync_in 194 ms (4%)  submit 86 ms (2%)  wait 4289 ms (85%)  sync_out 471 ms (9%)
+
+build: 390c30775 (9918)

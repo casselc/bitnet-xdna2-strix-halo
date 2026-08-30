@@ -26,7 +26,11 @@ static uint32_t xs32() { rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5; re
 int main(int argc, char **argv) {
     const std::string tensor = argc > 1 ? argv[1]
         : "artifacts/correctness/tensors/attn_q_l0.packed";
-    const int64_t K = 2560, N = 2560, M = 512;
+    /* Must track the runtime: it now uses the tuned artifacts, a 1024-token tile,
+     * and column-major B. Testing the old xclbin would silently stop testing the
+     * production path. */
+    const int64_t K = 2560, N = 2560, M = 1024;
+    const char *stem = "artifacts/xclbin-tuned/mm_M1024_K2560_N2560";
 
     std::printf("test_xdna_gemm  [M=%lld K=%lld N=%lld]  weights: %s\n",
                 (long long)M, (long long)K, (long long)N, tensor.c_str());
@@ -48,11 +52,10 @@ int main(int argc, char **argv) {
     std::vector<int8_t> w_nk((size_t)(K * N));
     i2s_codes_to_signed(codes.data(), (size_t)(K * N), w_nk.data());
 
-    // Kernel consumes B as [K,N] row-major; GGUF stores rows of K per output n.
-    std::vector<int8_t> b_kn((size_t)(K * N));
-    for (int64_t n = 0; n < N; ++n)
-        for (int64_t k = 0; k < K; ++k)
-            b_kn[k * N + n] = w_nk[n * K + k];
+    // The kernels are built with --b-col-maj 1, so B is column-major: element
+    // (k,n) at n*K + k, i.e. [N,K] row-major -- exactly how the GGUF stores it.
+    // No transpose, matching runtime/bitnet_xdna.cpp::build_b_kn.
+    std::vector<int8_t> b_kn(w_nk);
 
     // --- deterministic int8 activations -------------------------------------
     std::vector<int8_t> a((size_t)(M * K));
@@ -77,8 +80,8 @@ int main(int argc, char **argv) {
     // --- NPU -----------------------------------------------------------------
     std::vector<int32_t> c_npu((size_t)(M * N), 0);
     try {
-        xdna::Program prog("artifacts/xclbin/mm_M512_K2560_N2560.xclbin",
-                           "artifacts/xclbin/mm_M512_K2560_N2560.insts.bin", M, K, N);
+        xdna::Program prog(std::string(stem) + ".xclbin",
+                           std::string(stem) + ".insts.bin", M, K, N);
         auto w = prog.upload(b_kn.data());
         xdna::Program::reset_counters();
         prog.run(*w, a.data(), c_npu.data());                       // correctness pass

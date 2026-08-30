@@ -3,17 +3,19 @@
 A vertical slice answering one question: **is an XDNA2 NPU worth using as the
 resident BitNet controller on Strix Halo?**
 
-**Answer: the mechanism works and is provably correct; the economics do not yet.**
-See [`artifacts/VERDICT.md`](artifacts/VERDICT.md).
+**Answer: yes, in the range that matters — 1.12x at 2048 tokens, 1.08x at 3968,
+after three rounds of optimization.** See [`artifacts/VERDICT.md`](artifacts/VERDICT.md)
+for the original gate and [`artifacts/e2e/concurrent_results.md`](artifacts/e2e/concurrent_results.md)
+for the current numbers.
 
 - Real `BitNet-b1.58-2B-4T` runs NPU-assisted prefill and CPU decode.
 - The NPU kernel is **bit-exact** against the CPU reference, and end-to-end
   **perplexity is identical to 4 decimal places** while 830 matmuls run on the NPU.
-- After a round of tuning it is **1.5–3.2x slower** than 16 Zen 5 cores
-  (was 1.6–4x). The NPU now does its share of the arithmetic in 777 ms against
-  the CPU's 2009 ms for a whole 2048-token prefill — it is the faster engine for
-  that work. The loss is structural: offload is *exclusive*, so 16 CPU cores idle
-  for 76% of the wall clock.
+- **NPU and CPU now run concurrently** on disjoint halves of the token batch,
+  which is what turned a 0.62x loss into a 1.12x win. Exclusive offload left 16
+  cores idle for 76% of a prefill.
+- Below one NPU tile (1024 tokens) it declines to offload and matches CPU-only
+  exactly, rather than losing 0.59x to padding waste.
 - As far as I can find, this is the first public instance of BitNet running on XDNA2.
 
 ## Layout
@@ -35,6 +37,10 @@ See [`artifacts/VERDICT.md`](artifacts/VERDICT.md).
 - [`artifacts/e2e/tuned_results.md`](artifacts/e2e/tuned_results.md) — three
   one-parameter kernel fixes worth +42%, and why `aie.dma_bd`'s "N ≤ 4096 wall"
   is a tunable, not a hardware limit.
+- [`artifacts/e2e/concurrent_results.md`](artifacts/e2e/concurrent_results.md) —
+  concurrent execution, and the micro-batch trap: `ne11` is llama.cpp's `-ub`,
+  not the prompt length, so the default 512 both blocked the split and forced
+  2x padding waste against a 1024-token tile.
 
 ## Quick start
 
