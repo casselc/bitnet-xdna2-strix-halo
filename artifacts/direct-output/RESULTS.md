@@ -312,3 +312,56 @@ retired; it is retained now only because that path is still live for `ffn_down`.
 
 `ffn_down`'s deep-K path is the obvious remaining target at 2.6% of wall, and it
 is the natural scope for a follow-up. It is deliberately excluded here.
+
+---
+
+## 10. Reproduction
+
+```bash
+bash tools/scan_artifacts.sh
+make check                       # includes check-patch: the checked-in patch must
+                                 # match the source built, and must apply to a
+                                 # pristine checkout of the pinned BitNet tree
+
+export BITNET_XDNA_ARTIFACTS=$PWD/artifacts/xclbin-tuned
+python3 tools/baseline_check.py       --out artifacts/direct-output/baseline.csv
+python3 tools/output_cost.py          # per-shape output accounting (Task 1)
+python3 tools/direct_output_ab.py     # A/B/C/D matrix (Tasks 3, 5)
+python3 tools/cost_model_direct.py    # tile sweep, both paths (Task 7)
+python3 tools/cost_model_recal.py     # R=10 vs R=25 holdout    (Task 7)
+python3 tools/deployment_ab.py        # each path at its own R  (Task 6 perf)
+bash    tools/energy_direct.sh        # package energy/token    (Task 6)
+python3 tools/whole_system_direct.py  # co-tenant Pareto        (Task 8)
+```
+
+Flags: `BITNET_XDNA_DIRECT_OUT` (default **1**; `0` restores `g_acc`),
+`BITNET_XDNA_ASYNC` (default 0, superseded), `BITNET_XDNA_NPU_THREADS`
+(overrides R), `BITNET_XDNA_TILES`, `BITNET_XDNA_SHAPE_CSV`, `BITNET_PROFILE`.
+
+Measurement discipline: interleaved round-robin, never blocked; >= 5 reps for
+sub-10% claims; medians with dispersion; counters divided by `reps + 1` because
+llama-bench runs a warmup prefill; process reaping by explicit PID only.
+
+---
+
+## 11. GPU co-tenant [DEFERRED]
+
+Unchanged from the previous pass and deliberately not revisited: there is no
+ROCm, Vulkan loader, torch or GPU-runnable model on this machine, and the brief
+rules out installing one. This remains a separate system-enablement experiment.
+
+---
+
+## 12. Next
+
+`ffn_down`'s deep-K path is now measured at **42.8 ms per prefill (2.6% of
+wall)** and is the natural follow-up to this change -- the same argument, applied
+to the `partacc` + `partcopy` pair rather than `stage_out`. It is a smaller
+target than this one was.
+
+Beyond that the previous pass's conclusion stands unchanged: **attention** is
+35.7% of hybrid prefill at 2K and 49.0% at 4K, grows as O(T^2), and is the
+dependency-constrained critical path. Nothing here bears on whether XDNA2 would
+run it faster; that still wants a bounded feasibility spike measuring a
+flash-attention-shaped aie2p kernel against the CPU implementation for BitNet's
+real head and KV dimensions, before any implementation commitment.
