@@ -125,7 +125,14 @@ int64_t g_min_tokens = 1024;
  * clearly faster on the strength of a device-time figure that was wrong by 2x.
  * The balance point is therefore near 0.5, and the real constraint is tile
  * granularity, not the ratio. Overridden by BITNET_XDNA_SPLIT. */
-double g_split_frac = 0.5;
+double g_split_frac = -1.0;   /* <0 = derive from the thread-aware cost model */
+/* The NPU's throughput on BitNet's linears expressed in Zen 5 threads. Measured
+ * by sweeping tile shares against thread counts (artifacts/next-pass/sweep.csv):
+ * R = 10 is the value that reproduces the measured optimum in ALL SIX swept
+ * (tiles-available, thread-count) cases -- including the awkward one where 15
+ * threads at ub=1024 should decline the NPU entirely. Not a constant of nature:
+ * it will move with kernel quality and with the CPU's thread scaling. */
+double g_npu_threads = 10.0;
 long g_force_tiles = -1;   /* BITNET_XDNA_TILES: exact NPU tile count, -1 = auto */
 
 bool env_truthy(const char *name) {
@@ -274,6 +281,10 @@ int bitnet_xdna_available(void) {
     if (const char *ft = std::getenv("BITNET_XDNA_TILES")) {
         g_force_tiles = std::strtol(ft, nullptr, 10);
     }
+    if (const char *nt = std::getenv("BITNET_XDNA_NPU_THREADS")) {
+        const double v = std::strtod(nt, nullptr);
+        if (v > 0.0) g_npu_threads = v;
+    }
     if (const char *sp = std::getenv("BITNET_XDNA_SPLIT")) {
         const double v = std::strtod(sp, nullptr);
         if (v >= 0.0 && v <= 1.0) g_split_frac = v;
@@ -310,7 +321,7 @@ int64_t bitnet_xdna_token_split(int64_t n_tokens) {
      * so give it the whole batch rather than paying a dispatch for a fraction. */
     if (n_tokens <= kMTile) return n_tokens;
 
-    const double frac = g_split_frac;
+    const double frac = g_split_frac >= 0.0 ? g_split_frac : 0.5;
     if (frac >= 1.0) return n_tokens;
     if (frac <= 0.0) return 0;
 
@@ -431,6 +442,30 @@ void bitnet_xdna_epilogue(int64_t N, int64_t row_begin, int64_t row_end,
         float *drow = (float *)((char *)dst + (size_t)t * dst_row_stride);
         for (int64_t j = 0; j < N; ++j) drow[j] = (float)acc[j] * post;
     }
+}
+
+int64_t bitnet_xdna_token_split_nt(int64_t n_tokens, int n_threads) {
+    /* Explicit overrides win, so benchmarking stays controllable. */
+    if (g_force_tiles >= 0 || g_split_frac >= 0.0 || n_threads <= 1)
+        return bitnet_xdna_token_split(n_tokens);
+    if (n_tokens <= 0) return 0;
+    if (n_tokens <= kMTile) return n_tokens;
+
+    const double cpu_workers = (double)(n_threads - 1);   /* thread 0 drives the NPU */
+    const double f = g_npu_threads / (g_npu_threads + cpu_workers);
+
+    int64_t tiles = (int64_t)((double)n_tokens / (double)kMTile * f + 0.5);
+    const int64_t max_tiles = n_tokens / kMTile;
+    if (tiles < 0) tiles = 0;
+    if (tiles > max_tiles) tiles = max_tiles;
+    int64_t t = tiles * kMTile;
+
+    /* Giving the NPU every token means no CPU worker has anything to do, which
+     * throws away n_threads-1 cores. Only do that when the model actually says
+     * the NPU outruns all of them. */
+    if (t >= n_tokens && g_npu_threads < cpu_workers) t = (max_tiles - 1) * kMTile;
+    if (t < 0) t = 0;
+    return t;
 }
 
 uint64_t bitnet_xdna_dispatches(void)     { return xdna::Program::dispatch_count(); }

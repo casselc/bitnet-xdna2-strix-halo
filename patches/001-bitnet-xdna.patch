@@ -25,7 +25,7 @@ index fd5ba9989..87f21c7d3 100644
          find_library(ACCELERATE_FRAMEWORK Accelerate)
          if (ACCELERATE_FRAMEWORK)
 diff --git a/ggml/src/ggml-cpu/ggml-cpu.c b/ggml/src/ggml-cpu/ggml-cpu.c
-index ec88ef29a..d3509907a 100644
+index ec88ef29a..2738ca14d 100644
 --- a/ggml/src/ggml-cpu/ggml-cpu.c
 +++ b/ggml/src/ggml-cpu/ggml-cpu.c
 @@ -56,6 +56,13 @@
@@ -42,7 +42,7 @@ index ec88ef29a..d3509907a 100644
  #ifdef GGML_USE_CPU_RISCV64_SPACEMIT
  #    include "spacemit/ime.h"
  #endif
-@@ -1492,7 +1499,106 @@ UseGgmlGemm2:;
+@@ -1492,7 +1499,111 @@ UseGgmlGemm2:;
      if (src0->type == GGML_TYPE_I2_S && ggml_n_dims(src0) == 2) {
          const void * src1_wdata = (src1->type == vec_dot_type) ? src1->data : params->wdata;
          const size_t i2s_row_size = ggml_row_size(vec_dot_type, ne10);
@@ -71,7 +71,12 @@ index ec88ef29a..d3509907a 100644
 +            bitnet_xdna_worth_it(ne11) &&
 +            bitnet_xdna_supports(ne00, ne01)) {
 +
-+            const int64_t t_npu = (nth > 1) ? bitnet_xdna_token_split(ne11) : ne11;
++            // Thread-aware: thread 0 is consumed driving the device, so the
++            // CPU's share is served by nth-1 workers, not nth. A fixed fraction
++            // is wrong at both ends -- at low thread counts the NPU should take
++            // everything, at high counts it should take less than half or step
++            // aside entirely. See bitnet_xdna_token_split_nt.
++            const int64_t t_npu = (nth > 1) ? bitnet_xdna_token_split_nt(ne11, nth) : ne11;
 +            if (t_npu > 0) {
 +                static _Atomic int xdna_result;
 +

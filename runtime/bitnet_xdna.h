@@ -41,6 +41,19 @@ int bitnet_xdna_worth_it(int64_t n_tokens);
  * The fraction is BITNET_XDNA_SPLIT (default 0.5; 1.0 restores exclusive offload). */
 int64_t bitnet_xdna_token_split(int64_t n_tokens);
 
+/* Thread-aware form. Thread 0 is consumed driving the device, so only n_threads-1
+ * workers remain for the CPU's share -- a fixed 0.5 split is therefore wrong at
+ * both ends. Measured on this machine the NPU is worth ~10 Zen 5 threads on these
+ * shapes, so the balance point is
+ *
+ *     f = R / (R + (n_threads - 1)),   R = 10
+ *
+ * snapped to a whole NPU tile. That reproduces the measured optimum in all six
+ * swept (tiles-available, thread-count) cases, including declining the NPU
+ * entirely at 15 threads with only one tile available. Override with
+ * BITNET_XDNA_NPU_THREADS. */
+int64_t bitnet_xdna_token_split_nt(int64_t n_tokens, int n_threads);
+
 /* Compute dst = ((W_ternary . a_q) ) * (ws / act_scale[t]) for a whole batch.
  *
  *   src0_i2s   packed I2_S weight blob for an [N,K] tensor (scale lives inside)

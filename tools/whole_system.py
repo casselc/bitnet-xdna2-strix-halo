@@ -17,31 +17,52 @@ and a short answer, which is where TTFT dominates.
 import argparse, csv, json, os, re, subprocess, sys, time
 from pathlib import Path
 
-BIN = "refs/BitNet/build-xdna2/bin/llama-bench"
+BIN = "refs/BitNet/build-xdna3/bin/llama-bench"
 MODEL = "models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf"
 ART = os.path.abspath("artifacts/xclbin-tuned")
 
 
 class CpuLoad:
     """Stand-in for the CPU-side tenant: N processes doing integer/branch work,
-    which is what a graph/verification workload looks like to the scheduler."""
+    which is what a graph/verification workload looks like to the scheduler.
+
+    Each worker reports iterations completed, so we can measure what the tenant
+    LOSES while the controller runs. Controller latency alone is only half the
+    Pareto frontier -- a configuration that makes the controller fast by starving
+    everything else is not obviously the right deployment."""
     def __init__(self, n):
         self.n = n
         self.procs = []
+        self.tmp = None
 
     def __enter__(self):
-        prog = ("import time\n"
-                "t=time.time(); n=0\n"
-                "while time.time()-t < 3600:\n"
-                "    n=(n*1103515245+12345)&0x7fffffff\n")
-        for _ in range(self.n):
+        import tempfile
+        self.tmp = tempfile.mkdtemp(prefix="cotenant_")
+        prog = ("import time,sys,os\n"
+                "out=sys.argv[1]; t0=time.time(); n=0; it=0\n"
+                "while time.time()-t0 < 3600:\n"
+                "    for _ in range(100000): n=(n*1103515245+12345)&0x7fffffff\n"
+                "    it+=1\n"
+                "    if it%10==0:\n"
+                "        open(out,'w').write(f'{it} {time.time()-t0}')\n")
+        for i in range(self.n):
             self.procs.append(subprocess.Popen(
-                [sys.executable, "-c", prog],
+                [sys.executable, "-c", prog, os.path.join(self.tmp, f"w{i}")],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 start_new_session=True))
-        # let them reach steady state before the controller is timed
         time.sleep(3)
         return self
+
+    def sample(self):
+        """Aggregate co-tenant iterations/second so far."""
+        tot_it, tot_t = 0, 0.0
+        for i in range(self.n):
+            try:
+                it, t = open(os.path.join(self.tmp, f"w{i}")).read().split()
+                tot_it += int(it); tot_t = max(tot_t, float(t))
+            except Exception:
+                pass
+        return round(tot_it / tot_t, 1) if tot_t > 0 else 0.0
 
     def __exit__(self, *a):
         for p in self.procs:
@@ -50,6 +71,8 @@ class CpuLoad:
         for p in self.procs:
             try: p.wait(timeout=5)
             except Exception: pass
+        import shutil
+        if self.tmp: shutil.rmtree(self.tmp, ignore_errors=True)
         time.sleep(2)
         return False
 
@@ -97,23 +120,26 @@ def main():
 
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     fields = ["rep", "bg_workers", "threads", "tiles", "pp_tok_s", "tg_tok_s",
-              "ttft_ms", "total_ms", "cores_used"]
+              "ttft_ms", "total_ms", "cores_used", "cotenant_it_s"]
     print(f"controller p{a.prompt}/n{a.gen} ub{a.ub}; "
           f"{len(configs)} configs x {len(a.bg)} bg levels x {a.reps} reps", flush=True)
     with open(a.out, "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=fields); w.writeheader()
         for rep in range(a.reps):
             for bg in a.bg:
-                with CpuLoad(bg):
+                with CpuLoad(bg) as load:
                     for th, tiles in configs:
+                        before = load.sample() if bg else 0.0
                         r = controller(a.prompt, a.gen, th, tiles, a.ub)
                         if not r: continue
+                        after = load.sample() if bg else 0.0
                         row = dict(rep=rep, bg_workers=bg, threads=th,
                                    tiles=("cpu" if tiles is None else tiles),
-                                   cores_used=th, **r)
+                                   cores_used=th, cotenant_it_s=after, **r)
                         w.writerow(row); fh.flush()
                         print(f"  [{rep+1}] bg={bg} t={th} tiles={row['tiles']}: "
-                              f"TTFT {r['ttft_ms']:.0f} ms  total {r['total_ms']:.0f} ms",
+                              f"TTFT {r['ttft_ms']:.0f} ms  total {r['total_ms']:.0f} ms"
+                              + (f"  co-tenant {after:.0f} it/s" if bg else ""),
                               flush=True)
     print(f"\nwrote {a.out}")
 
