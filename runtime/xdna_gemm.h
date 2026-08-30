@@ -78,6 +78,29 @@ public:
      * Contract: at most one dispatch outstanding. submit_async() on a Program
      * with one already pending is a logic error and throws. */
     void submit_async(const Weights &w, int c_slot);
+
+    /* --- persistent output slots (direct mapped-output path) ---------------
+     *
+     * One reused C scratch buffer forces every dispatch's results to be
+     * evacuated before the next dispatch overwrites them -- measured at
+     * 163 ms/prefill of single-threaded copying. Persistent per-(token tile,
+     * N chunk) output buffers let each result stay live until the ggml
+     * threadpool epilogue has consumed it, so the copy disappears entirely.
+     *
+     * Separate BOs rather than sub-buffers of an arena: XRT sub-buffer
+     * semantics around HOST_ONLY allocation and partial sync are the fiddlier
+     * mechanism, and rebinding a different BO per dispatch was measured to cost
+     * nothing (0.000-0.007 ms, artifacts/e2e). Simplest robust option first.
+     *
+     * A slot may not be rewritten until the NPU write, the sync-from-device and
+     * every CPU epilogue reader of that slot have completed. The ggml barrier
+     * after the epilogue provides that boundary; nothing here relies on timing. */
+    void ensure_out_slots(int n);
+    int  out_slot_count() const;
+    size_t out_slot_bytes() const;          // per slot
+    int32_t *out_slot_map(int slot);
+    void run_presynced_slot(const Weights &w, int slot);
+    void submit_async_slot(const Weights &w, int slot);
     void wait_pending();          // wait + sync the outstanding slot; no-op if none
     bool has_pending() const;
     int32_t *c_map_slot(int slot);

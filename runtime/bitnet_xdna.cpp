@@ -174,6 +174,23 @@ double g_npu_threads = 10.0;
  * chunk overlaps the device executing the next. BITNET_XDNA_ASYNC=1. Off by
  * default -- the synchronous path is the proven one. */
 bool g_async = false;
+/* Direct mapped-output epilogue (BITNET_XDNA_DIRECT_OUT=1). Each dispatch writes
+ * a persistent per-(token tile, N chunk) output slot, and the multi-threaded
+ * epilogue reads that slot directly, so the mapped-C -> g_acc copy disappears.
+ * Scope this pass: k_chunks == 1 only (attn_q, attn_out, ffn_gate, ffn_up).
+ * ffn_down keeps the deep-K accumulation path unchanged. */
+bool g_direct_out = false;
+
+/* Published by accumulate on thread 0 BEFORE the ggml barrier and read by every
+ * thread AFTER it, so the barrier supplies the happens-before edge. Plain fields
+ * are correct here for exactly that reason. */
+struct DirectOutPlan {
+    bool                  active   = false;
+    int                   n_chunks = 0;
+    int64_t               N        = 0;
+    std::vector<int32_t*> slots;   // [token_tile * n_chunks + n_chunk]
+};
+DirectOutPlan g_direct;
 long g_force_tiles = -1;   /* BITNET_XDNA_TILES: exact NPU tile count, -1 = auto */
 
 bool env_truthy(const char *name) {
@@ -287,6 +304,13 @@ static void print_stats_atexit(void) {
         const double in_ms  = g_stage_in_ns.load()  / 1e6;
         const double out_ms = g_stage_out_ns.load() / 1e6;
         const double out_gb = g_stage_out_bytes.load() / 1e9;
+        if (g_direct_out) {
+            if (xdna::Program *pg = program_for(single_stem(), kKChunk, kNChunk))
+                std::fprintf(stderr,
+                    "[bitnet-xdna] direct-out arena: %d slots x %.1f MiB = %.1f MiB\n",
+                    pg->out_slot_count(), pg->out_slot_bytes()/1048576.0,
+                    pg->out_slot_count() * pg->out_slot_bytes()/1048576.0);
+        }
         std::fprintf(stderr,
             "[bitnet-xdna] stage_in=%.1f ms  stage_out=%.1f ms over %.2f GB "
             "(%.1f GB/s, SINGLE-THREADED on thread 0 while others wait)\n",
@@ -366,6 +390,7 @@ int bitnet_xdna_available(void) {
     if (!env_truthy("BITNET_XDNA")) { g_state_fast.store(0, std::memory_order_release); return 0; }
     if (env_truthy("BITNET_XDNA_STATS")) std::atexit(print_stats_atexit);
     g_async = env_truthy("BITNET_XDNA_ASYNC");
+    g_direct_out = env_truthy("BITNET_XDNA_DIRECT_OUT");
     if (const char *ft = std::getenv("BITNET_XDNA_TILES")) {
         g_force_tiles = std::strtol(ft, nullptr, 10);
     }
@@ -448,6 +473,21 @@ int bitnet_xdna_accumulate(const void *src0_i2s, int64_t K, int64_t N,
         g_acc_N = N;
         ShapeStat *st = shape_stat(K, N);
         g_cur_shape.store(st, std::memory_order_release);
+
+        /* Direct mapped output applies only where one K chunk produces the final
+         * int32 result. Deep-K (ffn_down) still needs host-side accumulation
+         * across chunks and keeps the g_acc path untouched. */
+        const int64_t n_tiles   = (T + kMTile - 1) / kMTile;
+        const bool    use_direct = g_direct_out && plan.k_chunks == 1;
+        if (use_direct) {
+            prog->ensure_out_slots((int)(n_tiles * plan.n_chunks));
+            g_direct.active   = true;
+            g_direct.n_chunks = plan.n_chunks;
+            g_direct.N        = N;
+            g_direct.slots.assign((size_t)(n_tiles * plan.n_chunks), nullptr);
+        } else {
+            g_direct.active = false;
+        }
 
         int8_t *a_bo = prog->a_map();
         const int32_t *c_bo = prog->c_map();
@@ -537,7 +577,27 @@ int bitnet_xdna_accumulate(const void *src0_i2s, int64_t K, int64_t N,
                     return *res->chunks[(size_t)nc * plan.k_chunks + kc];
                 };
 
-                if (g_async && plan.n_chunks > 1) {
+                if (use_direct) {
+                    /* Every N chunk of this K slice gets its own persistent
+                     * output slot, so nothing is overwritten and no evacuation
+                     * is needed. The slot index carries BOTH dimensions --
+                     * token tile and N chunk -- because a later token tile must
+                     * not clobber an earlier tile's results before the epilogue
+                     * has read them. */
+                    const int64_t tile = t0 / kMTile;
+                    for (int nc = 0; nc < plan.n_chunks; ++nc) {
+                        const int slot = (int)(tile * plan.n_chunks + nc);
+                        const auto d0 = std::chrono::steady_clock::now();
+                        if (g_async) {
+                            prog->submit_async_slot(chunk_at(nc), slot);
+                            prog->wait_pending();
+                        } else {
+                            prog->run_presynced_slot(chunk_at(nc), slot);
+                        }
+                        account(d0);
+                        g_direct.slots[(size_t)slot] = prog->out_slot_map(slot);
+                    }
+                } else if (g_async && plan.n_chunks > 1) {
                     /* Software pipeline over N-chunks. Every N-chunk of this
                      * K-slice reads the same activations, so the A buffer is
                      * stable and chunk nc+1 can be submitted before chunk nc's
@@ -589,11 +649,31 @@ void bitnet_xdna_epilogue(int64_t N, int64_t row_begin, int64_t row_end,
                           float *dst, size_t dst_row_stride) {
     (void)g_acc_N;
     const auto ep_t0 = std::chrono::steady_clock::now();
+    if (g_direct.active && g_direct.N == N) {
+        /* Same arithmetic as below, reading the NPU's mapped output slot instead
+         * of a host copy of it. Column j of token t lives in the slot for
+         * (t / kMTile, j / kNChunk), at row (t % kMTile), column (j % kNChunk). */
+        const int nch = g_direct.n_chunks;
+        for (int64_t t = row_begin; t < row_end; ++t) {
+            const float post = ws / act_scales[t];
+            const int64_t tile = t / kMTile, row = t % kMTile;
+            float *drow = (float *)((char *)dst + (size_t)t * dst_row_stride);
+            for (int nc = 0; nc < nch; ++nc) {
+                const int64_t n_off  = (int64_t)nc * kNChunk;
+                const int64_t n_keep = std::min(kNChunk, N - n_off);
+                const int32_t *acc = g_direct.slots[(size_t)(tile * nch + nc)]
+                                     + row * kNChunk;
+                float *d = drow + n_off;
+                for (int64_t j = 0; j < n_keep; ++j) d[j] = (float)acc[j] * post;
+            }
+        }
+    } else {
     for (int64_t t = row_begin; t < row_end; ++t) {
         const float post = ws / act_scales[t];
         const int32_t *acc = g_acc.data() + t * N;
         float *drow = (float *)((char *)dst + (size_t)t * dst_row_stride);
         for (int64_t j = 0; j < N; ++j) drow[j] = (float)acc[j] * post;
+    }
     }
     const uint64_t ep_dt = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now() - ep_t0).count();
