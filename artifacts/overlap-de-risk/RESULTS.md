@@ -245,3 +245,82 @@ ffn_down             (3 K-chunks, int32 accum)   T=1024/1536/2048  bit-exact
 
 Perplexity unchanged and identical across backends: `307.5806 +/- 27.85495` for
 both `BITNET_XDNA=0` and `=1`, matching the recorded baseline.
+
+---
+
+## 3. Dependency trace [MEASURED]
+
+`trace.jsonl` -- one full prefill (pp2048, `-ub 1024`, 2 micro-batches, 1150
+nodes, 269 KB). Per node: micro-batch, graph index, op, tensor name (carrying the
+layer), source tensor names, rebased start/end in us, NPU device time and
+dispatch count. Timestamps are rebased to the prefill start; absolute monotonic
+values carry no information and would differ every run.
+
+This is sufficient to reconstruct the operation DAG, and it is what
+`tools/pipeline_sim.py` consumes.
+
+---
+
+## 4. Dependency-constrained schedule [SIMULATED]
+
+`tools/pipeline_sim.py` builds the real transformer DAG from the measured
+per-operation times and list-schedules it over one NPU and one CPU resource.
+
+Model assumptions, stated because they bound the claim:
+
+- **One CPU resource.** Operation times are measured at 15 threads, so a node
+  already uses the whole CPU. Treating the CPU as one resource claims no gain
+  from running two CPU nodes at once -- conservative, and it keeps the question
+  on CPU/NPU overlap, which is what the pipeline proposal is about.
+- **One NPU resource** -- the device is single-tenant.
+- **Offloading does not free the CPU.** An op on the NPU still costs the CPU its
+  measured staging + epilogue (section 2). Modelling NPU placement as free for
+  the CPU would overstate the pipeline.
+- **The one cross-micro-batch edge is included**: `attn(m,L)` waits on
+  `kv_write(m-1,L)`, since causal attention reads every earlier micro-batch's KV.
+  That edge is exactly what permits a wavefront, and what limits it.
+
+**Validation.** The simulator's serial schedule reproduces measurement without
+being fitted to it: CPU-only 2001 ms simulated vs **2010 ms measured** (0.4%);
+all-NPU 2214 ms simulated vs **2193 ms measured** (1.0%).
+
+| config | A serial CPU-only | A serial +NPU | **B perfect [UPPER BOUND]** | **C dep-constrained** | NPU duty (C) | CPU util (C) |
+|---|---:|---:|---:|---:|---:|---:|
+| pp2048 ub2048 (1 mb) | 2001 | 2214 | **1482** (1.49x) | **1603** (1.38x) | 45.7% | **92.5%** |
+| pp2048 ub1024 (2 mb) | 1996 | 2231 | **1488** (1.50x) | **1607** (1.39x) | 46.2% | **92.6%** |
+| pp3968 ub2048 (2 mb) | 4692 | 5186 | **3698** (1.40x) | **3995** (1.30x) | 37.3% | **92.6%** |
+| pp3968 ub1024 (4 mb) | 4801 | 5166 | **4040** (1.28x) | **4222** (1.22x) | 26.7% | **95.7%** |
+
+Perfect overlap and the dependency-constrained bound are **not** the same number:
+dependencies cost 8-12% of the theoretical gain at every context and micro-batch
+count.
+
+### The comparison that decides it
+
+The speedups above are against the *all-NPU serial* schedule. That is not what is
+deployed. The deployed configuration already overlaps CPU and NPU **within** each
+matmul by splitting tokens, and it is measured. Against that:
+
+| config | deployed hybrid [MEASURED] | C dep-constrained [SIMULATED] | **gain** |
+|---|---:|---:|---:|
+| pp2048 `-ub 2048` | **1685 ms** | 1603 ms | **1.05x** |
+| pp3968 `-ub 2048` | **4090 ms** | 3995 ms | **1.02x** |
+| pp3968 `-ub 1024` | 5130 ms | 4222 ms | 0.97x vs the ub2048 deployed point |
+
+**Full dependency-aware cross-micro-batch overlap is worth 1.02-1.05x over what
+is already running.** At 4K the four-micro-batch schedule (4222 ms) is *worse*
+than today's two-micro-batch deployed configuration (4090 ms).
+
+Three measured reasons, all pointing the same way:
+
+1. **The CPU is already saturated: 92.5-95.7% utilised in the overlapped
+   schedule.** Overlap helps when a resource is idle. The idle resource here is
+   the NPU, and the bottleneck is the CPU, so shifting work onto the NPU is
+   limited by what the CPU must still do for it.
+2. **The critical path is attention** -- 594 ms of the 2K critical path and
+   1378 ms of the 4K one, more than every projection on the path combined. No
+   amount of NPU scheduling shortens it, because attention never runs on the NPU.
+3. **More micro-batches make it worse, not better.** Going from 2 to 4
+   micro-batches at 4K drops NPU duty from 37.3% to 26.7% and pushes CPU
+   utilisation to 95.7%: smaller tiles mean proportionally more per-op CPU
+   staging for the same arithmetic.
