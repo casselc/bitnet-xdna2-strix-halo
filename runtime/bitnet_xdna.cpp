@@ -143,6 +143,10 @@ double g_split_frac = -1.0;   /* <0 = derive from the thread-aware cost model */
  * threads at ub=1024 should decline the NPU entirely. Not a constant of nature:
  * it will move with kernel quality and with the CPU's thread scaling. */
 double g_npu_threads = 10.0;
+/* Experimental: pipeline N-chunk dispatches so the host-side evacuation of one
+ * chunk overlaps the device executing the next. BITNET_XDNA_ASYNC=1. Off by
+ * default -- the synchronous path is the proven one. */
+bool g_async = false;
 long g_force_tiles = -1;   /* BITNET_XDNA_TILES: exact NPU tile count, -1 = auto */
 
 bool env_truthy(const char *name) {
@@ -302,6 +306,7 @@ int bitnet_xdna_available(void) {
     g_state = 0;
     if (!env_truthy("BITNET_XDNA")) { g_state_fast.store(0, std::memory_order_release); return 0; }
     if (env_truthy("BITNET_XDNA_STATS")) std::atexit(print_stats_atexit);
+    g_async = env_truthy("BITNET_XDNA_ASYNC");
     if (const char *ft = std::getenv("BITNET_XDNA_TILES")) {
         g_force_tiles = std::strtol(ft, nullptr, 10);
     }
@@ -416,30 +421,15 @@ int bitnet_xdna_accumulate(const void *src0_i2s, int64_t K, int64_t N,
                     std::memory_order_relaxed);
                 prog->sync_a();                     // once per K slice, not per N chunk
 
-                for (int nc = 0; nc < plan.n_chunks; ++nc) {
-                    const int64_t n_off  = (int64_t)nc * kNChunk;
-                    const int64_t n_keep = std::min(kNChunk, N - n_off);
-
-                    const auto d0 = std::chrono::steady_clock::now();
-                    prog->run_mapped_presynced(
-                        *res->chunks[(size_t)nc * plan.k_chunks + kc]);
-
-                    {   // per-shape accounting, keyed on the LOGICAL tensor shape
-                        const auto dns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                             std::chrono::steady_clock::now() - d0).count();
-                        auto key = std::make_pair(K, N);
-                        auto it2 = g_shape_stats.find(key);
-                        if (it2 == g_shape_stats.end())
-                            it2 = g_shape_stats.emplace(key, new ShapeStat()).first;
-                        it2->second->n.fetch_add(1, std::memory_order_relaxed);
-                        it2->second->ns.fetch_add((uint64_t)dns, std::memory_order_relaxed);
-                    }
-
+                /* Evacuate one finished N-chunk from a mapped output slot.
+                 * Identical arithmetic in both the synchronous and pipelined
+                 * paths -- only WHEN it runs differs. */
+                auto evacuate = [&](const int32_t *cbuf, int64_t n_off, int64_t n_keep) {
                     if (plan.k_chunks == 1) {
                         const auto so0 = std::chrono::steady_clock::now();
                         for (int64_t r = 0; r < rows; ++r)
                             std::memcpy(g_acc.data() + (t0 + r) * N + n_off,
-                                        c_bo + r * kNChunk, (size_t)(n_keep * 4));
+                                        cbuf + r * kNChunk, (size_t)(n_keep * 4));
                         g_stage_out_ns.fetch_add((uint64_t)std::chrono::duration_cast<
                             std::chrono::nanoseconds>(std::chrono::steady_clock::now() - so0).count(),
                             std::memory_order_relaxed);
@@ -450,9 +440,53 @@ int bitnet_xdna_accumulate(const void *src0_i2s, int64_t K, int64_t N,
                         // |sum| <= K * 127 * 1 fits comfortably.
                         for (int64_t r = 0; r < rows; ++r) {
                             int32_t *pr = part.data() + r * N + n_off;
-                            const int32_t *cr = c_bo + r * kNChunk;
+                            const int32_t *cr = cbuf + r * kNChunk;
                             for (int64_t j2 = 0; j2 < n_keep; ++j2) pr[j2] += cr[j2];
                         }
+                    }
+                };
+                auto account = [&](std::chrono::steady_clock::time_point d0) {
+                    const auto dns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                         std::chrono::steady_clock::now() - d0).count();
+                    auto key = std::make_pair(K, N);
+                    auto it2 = g_shape_stats.find(key);
+                    if (it2 == g_shape_stats.end())
+                        it2 = g_shape_stats.emplace(key, new ShapeStat()).first;
+                    it2->second->n.fetch_add(1, std::memory_order_relaxed);
+                    it2->second->ns.fetch_add((uint64_t)dns, std::memory_order_relaxed);
+                };
+                const auto chunk_at = [&](int nc) -> const xdna::Weights & {
+                    return *res->chunks[(size_t)nc * plan.k_chunks + kc];
+                };
+
+                if (g_async && plan.n_chunks > 1) {
+                    /* Software pipeline over N-chunks. Every N-chunk of this
+                     * K-slice reads the same activations, so the A buffer is
+                     * stable and chunk nc+1 can be submitted before chunk nc's
+                     * results are evacuated. The evacuation then overlaps device
+                     * time instead of running while the NPU is idle. Two output
+                     * slots alternate so the copy cannot race the device. */
+                    auto d0 = std::chrono::steady_clock::now();
+                    prog->submit_async(chunk_at(0), 0);
+                    for (int nc = 0; nc < plan.n_chunks; ++nc) {
+                        prog->wait_pending();
+                        account(d0);
+                        const int32_t *cbuf = prog->c_map_slot(nc & 1);
+                        if (nc + 1 < plan.n_chunks) {
+                            d0 = std::chrono::steady_clock::now();
+                            prog->submit_async(chunk_at(nc + 1), (nc + 1) & 1);
+                        }
+                        const int64_t n_off  = (int64_t)nc * kNChunk;
+                        evacuate(cbuf, n_off, std::min(kNChunk, N - n_off));
+                    }
+                } else {
+                    for (int nc = 0; nc < plan.n_chunks; ++nc) {
+                        const int64_t n_off  = (int64_t)nc * kNChunk;
+                        const int64_t n_keep = std::min(kNChunk, N - n_off);
+                        const auto d0 = std::chrono::steady_clock::now();
+                        prog->run_mapped_presynced(chunk_at(nc));
+                        account(d0);
+                        evacuate(c_bo, n_off, n_keep);
                     }
                 }
             }

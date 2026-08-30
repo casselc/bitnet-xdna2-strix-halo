@@ -324,3 +324,55 @@ Three measured reasons, all pointing the same way:
    micro-batches at 4K drops NPU duty from 37.3% to 26.7% and pushes CPU
    utilisation to 95.7%: smaller tiles mean proportionally more per-op CPU
    staging for the same arithmetic.
+
+---
+
+## 5. Asynchronous dispatch spike [MEASURED]
+
+The brief proposes proving the concurrency mechanism on FFN gate/up before
+touching llama.cpp's scheduler. The measurements in section 2 point at a better
+target for the same mechanism, at a smaller implementation disturbance: the
+evacuation of each N-chunk's results runs **immediately after waiting for that
+chunk, while the device is idle**. Submitting the next chunk first turns that
+serial copy into overlapped work -- the same submit-without-wait / join-at-the-
+consumer structure the gate/up spike would have tested, entirely inside
+`runtime/`, with no change to ggml, the graph, or the barrier structure.
+
+Implemented as `Program::submit_async` / `wait_pending` with two alternating
+output buffers, behind `BITNET_XDNA_ASYNC=1`. At most one dispatch is
+outstanding; submitting with one pending throws. Every N-chunk of a K-slice
+reads the same activations, so the A buffer is stable across the submits being
+pipelined -- a K-slice boundary drains before A is restaged.
+
+**Correctness:** bit-exact with the flag on and off, all twelve shape cases
+including 3-way N-chunking, 6912->7680 padding and 3-way K-accumulation.
+
+**Performance**, interleaved round-robin, 5 reps of 3 inner reps, 15 threads:
+
+| config | sync | async | **gain** | sd (sync/async) |
+|---|---:|---:|---:|---|
+| pp2048 `-ub 2048` | 1221.9 | 1262.5 | **1.033x** | 8.6 / 8.8 |
+| pp3968 `-ub 2048` | 973.5 | 1005.5 | **1.033x** | 5.2 / 3.6 |
+| pp2048 `-ub 1024` | 923.0 | 1001.2 | **1.085x** | 2.5 / 7.8 |
+
+Real and reproducible -- the 2K gain is roughly 5 standard deviations -- but
+small, and it does not change any deployment choice: async at `-ub 1024` (1001)
+still loses to synchronous at `-ub 2048` (1222).
+
+**Why only 3.3% when staging is 11% of wall.** The pipeline currently applies
+only where `n_chunks > 1`, which is `ffn_gate` and `ffn_up`. `ffn_down` is
+`n_chunks=1, k_chunks=3` and `attn_q`/`attn_out` are 1x1, so they still run
+synchronously. Of gate/up's staging, chunks 1 and 2 overlap but chunk 0 cannot,
+so roughly 2/3 of 64% of staging is hidden -- about 70 ms of 1685 ms, or 4.2%
+predicted against 3.3% measured.
+
+Extending the pipeline across K-chunks would cover `ffn_down`, but K-chunks each
+need different activations, so it additionally requires double-buffering the A
+buffer -- the device is still reading A when the next chunk would be staged. That
+is a larger change and is not attempted here.
+
+**Verdict: the asynchronous execution mechanism is de-risked and works.** It is
+bit-exact, it is cheap, and it confirms the simulation's prediction that overlap
+of this kind is worth only a few percent. It is left **off by default** in this
+pass so the branch stays directly comparable to the baseline; it is ready to be
+promoted.

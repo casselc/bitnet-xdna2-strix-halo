@@ -55,6 +55,10 @@ struct Program::Impl {
     xrt::hw_context ctx;
     xrt::kernel     kern;
     xrt::bo         bo_insts, bo_a, bo_c;   // staging buffers shared by all tensors
+    xrt::bo         bo_c2;                  // second output slot, async path only
+    xrt::run        pending;
+    int             pending_slot = -1;
+    std::chrono::steady_clock::time_point pending_t0;
     size_t          insts_bytes;
 };
 
@@ -84,6 +88,45 @@ Program::Program(const std::string &xclbin_path, const std::string &insts_path,
     // Args 3,4,5 are A,B,C; args 0..2 are (opcode, insts, ninsts).
     p_->bo_a = xrt::bo(dev, (size_t)(M_tile * K),     XRT_BO_FLAGS_HOST_ONLY, p_->kern.group_id(3));
     p_->bo_c = xrt::bo(dev, (size_t)(M_tile * N * 4), XRT_BO_FLAGS_HOST_ONLY, p_->kern.group_id(5));
+    p_->bo_c2 = xrt::bo(dev, (size_t)(M_tile * N * 4), XRT_BO_FLAGS_HOST_ONLY, p_->kern.group_id(5));
+}
+
+int32_t *Program::c_map_slot(int slot) {
+    return (slot & 1) ? p_->bo_c2.map<int32_t *>() : p_->bo_c.map<int32_t *>();
+}
+
+bool Program::has_pending() const { return p_->pending_slot >= 0; }
+
+void Program::submit_async(const Weights &w, int c_slot) {
+    if (p_->pending_slot >= 0)
+        throw std::logic_error("submit_async with a dispatch already outstanding");
+    p_->pending_t0 = std::chrono::steady_clock::now();
+    p_->pending = p_->kern(3, p_->bo_insts, (uint32_t)p_->insts_bytes,
+                           p_->bo_a, w.p_->bo,
+                           (c_slot & 1) ? p_->bo_c2 : p_->bo_c);
+    p_->pending_slot = c_slot & 1;
+    g_submit_ns.fetch_add((uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - p_->pending_t0).count(), std::memory_order_relaxed);
+}
+
+void Program::wait_pending() {
+    if (p_->pending_slot < 0) return;
+    using nsec = std::chrono::nanoseconds;
+    const auto t2 = std::chrono::steady_clock::now();
+    const auto state = p_->pending.wait();
+    if (state != ERT_CMD_STATE_COMPLETED)
+        throw std::runtime_error("NPU dispatch did not complete, ert state " +
+                                 std::to_string(static_cast<int>(state)));
+    const auto t3 = std::chrono::steady_clock::now();
+    ((p_->pending_slot) ? p_->bo_c2 : p_->bo_c).sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    const auto t4 = std::chrono::steady_clock::now();
+
+    g_wait_ns    .fetch_add((uint64_t)std::chrono::duration_cast<nsec>(t3-t2).count(), std::memory_order_relaxed);
+    g_sync_out_ns.fetch_add((uint64_t)std::chrono::duration_cast<nsec>(t4-t3).count(), std::memory_order_relaxed);
+    g_dispatches .fetch_add(1, std::memory_order_relaxed);
+    g_dispatch_ns.fetch_add((uint64_t)std::chrono::duration_cast<nsec>(t4 - p_->pending_t0).count(),
+                            std::memory_order_relaxed);
+    p_->pending_slot = -1;
 }
 
 Program::~Program() = default;

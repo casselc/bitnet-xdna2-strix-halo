@@ -61,6 +61,28 @@ public:
     void sync_a();
     void run_mapped_presynced(const Weights &w);
 
+    /* Asynchronous dispatch, for overlapping the host-side evacuation of one
+     * chunk's results with the NPU's execution of the next.
+     *
+     * The dispatch loop copies each chunk's int32 results out of the mapped
+     * output buffer immediately after waiting for it, which happens while the
+     * device is idle -- measured at 162 ms per prefill, single-threaded (see
+     * artifacts/overlap-de-risk/RESULTS.md section 2). Submitting the next chunk
+     * before evacuating the current one hides that copy under device time.
+     *
+     * Two output buffers alternate so the copy out of slot i cannot race the
+     * device writing slot i^1. Every N-chunk of one K-slice consumes the same
+     * activations, so the A buffer is stable across the submits being pipelined;
+     * a K-slice boundary must drain before restaging A.
+     *
+     * Contract: at most one dispatch outstanding. submit_async() on a Program
+     * with one already pending is a logic error and throws. */
+    void submit_async(const Weights &w, int c_slot);
+    void wait_pending();          // wait + sync the outstanding slot; no-op if none
+    bool has_pending() const;
+    int32_t *c_map_slot(int slot);
+    static constexpr int kCSlots = 2;
+
     /* Convenience wrapper that copies through (used by tests). */
     void run(const Weights &w, const int8_t *a, int32_t *c);
 
