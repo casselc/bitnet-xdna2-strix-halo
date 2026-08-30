@@ -21,3 +21,7 @@ artifacts/xclbin*/*.prj/
 #       models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf \
 #       blk.0.attn_q.weight artifacts/correctness/tensors/attn_q_l0
 artifacts/correctness/tensors/*.packed
+
+# generated
+__pycache__/
+*.pyc

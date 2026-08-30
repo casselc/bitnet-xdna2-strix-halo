@@ -170,6 +170,22 @@ double g_split_frac = -1.0;   /* <0 = derive from the thread-aware cost model */
  * threads at ub=1024 should decline the NPU entirely. Not a constant of nature:
  * it will move with kernel quality and with the CPU's thread scaling. */
 double g_npu_threads = 10.0;
+/* R depends on which output path is live, because R measures the cost of NPU-
+ * assigned work and the g_acc path charged every NPU token tile an extra
+ * single-threaded staging copy on thread 0. Removing that copy makes NPU tiles
+ * cheaper and moves the balance point toward the device.
+ *
+ * Measured under direct output (artifacts/direct-output/cost_model_recal.csv,
+ * pp2048/pp3072 x threads 4/6/8/10/12/15, exhaustive tile sweep vs auto):
+ *
+ *     R = 10   mean regret 1.026x, worst 1.147x   (picks 1 tile at 6 threads
+ *                                                  where 2 is worth 733 vs 639)
+ *     R = 25   mean regret 1.005x, worst 1.017x
+ *
+ * R in [21, 41] reproduces all three pp2048 optima; 25 sits mid-range. R = 10
+ * remains correct for the g_acc path and is kept as the default there. */
+constexpr double kR_GACC   = 10.0;
+constexpr double kR_DIRECT = 25.0;
 /* Experimental: pipeline N-chunk dispatches so the host-side evacuation of one
  * chunk overlaps the device executing the next. BITNET_XDNA_ASYNC=1. Off by
  * default -- the synchronous path is the proven one. */
@@ -177,9 +193,15 @@ bool g_async = false;
 /* Direct mapped-output epilogue (BITNET_XDNA_DIRECT_OUT=1). Each dispatch writes
  * a persistent per-(token tile, N chunk) output slot, and the multi-threaded
  * epilogue reads that slot directly, so the mapped-C -> g_acc copy disappears.
- * Scope this pass: k_chunks == 1 only (attn_q, attn_out, ffn_gate, ffn_up).
- * ffn_down keeps the deep-K accumulation path unchanged. */
-bool g_direct_out = false;
+ * Scope: k_chunks == 1 only (attn_q, attn_out, ffn_gate, ffn_up). ffn_down keeps
+ * the deep-K accumulation path unchanged.
+ *
+ * ON BY DEFAULT since artifacts/direct-output/RESULTS.md: 1.007-1.152x
+ * throughput, 0.737-0.790x energy per token, and a Pareto improvement on both
+ * axes under co-tenancy, with bit-exact results. BITNET_XDNA_DIRECT_OUT=0
+ * restores the g_acc path, which remains the reference and is still the live
+ * path for ffn_down. */
+bool g_direct_out = true;
 
 /* Published by accumulate on thread 0 BEFORE the ggml barrier and read by every
  * thread AFTER it, so the barrier supplies the happens-before edge. Plain fields
@@ -390,13 +412,16 @@ int bitnet_xdna_available(void) {
     if (!env_truthy("BITNET_XDNA")) { g_state_fast.store(0, std::memory_order_release); return 0; }
     if (env_truthy("BITNET_XDNA_STATS")) std::atexit(print_stats_atexit);
     g_async = env_truthy("BITNET_XDNA_ASYNC");
-    g_direct_out = env_truthy("BITNET_XDNA_DIRECT_OUT");
+    /* Default on; set BITNET_XDNA_DIRECT_OUT=0 to fall back to the g_acc path. */
+    if (const char *dv = std::getenv("BITNET_XDNA_DIRECT_OUT"))
+        g_direct_out = !(dv[0] == '0' && dv[1] == '\0');
+    g_npu_threads = g_direct_out ? kR_DIRECT : kR_GACC;
     if (const char *ft = std::getenv("BITNET_XDNA_TILES")) {
         g_force_tiles = std::strtol(ft, nullptr, 10);
     }
     if (const char *nt = std::getenv("BITNET_XDNA_NPU_THREADS")) {
         const double v = std::strtod(nt, nullptr);
-        if (v > 0.0) g_npu_threads = v;
+        if (v > 0.0) g_npu_threads = v;   // explicit override wins over both defaults
     }
     if (const char *sp = std::getenv("BITNET_XDNA_SPLIT")) {
         const double v = std::strtod(sp, nullptr);
