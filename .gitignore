@@ -14,7 +14,7 @@ build/
 
 # mlir-aie per-design build intermediates (1.3 MiB each); the .xclbin and
 # .insts.bin next to them ARE checked in -- they are the deliverable.
-artifacts/xclbin/*.prj/
+artifacts/xclbin*/*.prj/
 
 # Extracted model weight slices used by tests. Regenerate with:
 #   .venv/bin/python tools/gguf_extract.py \

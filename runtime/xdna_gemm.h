@@ -63,6 +63,10 @@ public:
     static uint64_t dispatch_count();
     static double   dispatch_ms();
     static void     reset_counters();
+    /* Split of the timed region: cache flush in, ioctl submit, fence wait,
+     * cache invalidate out. Totals in ms across all dispatches. */
+    static void     breakdown_ms(double *sync_in, double *submit,
+                                 double *wait, double *sync_out);
 
 private:
     struct Impl;

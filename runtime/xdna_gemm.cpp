@@ -17,6 +17,14 @@ namespace {
 
 std::atomic<uint64_t> g_dispatches{0};
 std::atomic<uint64_t> g_dispatch_ns{0};
+/* The dispatch is four distinct costs and an aggregate cannot separate them.
+ * sync() on this part is not a DMA and not a no-op: amdxdna's KMQ shim reports
+ * is_cache_coherent()==false unconditionally, so sync() is a userspace CLFLUSH
+ * loop run by this thread, and its cost depends on how much of the buffer is
+ * resident and dirty. In llama.cpp we memcpy megabytes in and out around every
+ * dispatch while 15 other threads churn L3; a micro-benchmark that never
+ * touches the buffers pays almost nothing. */
+std::atomic<uint64_t> g_sync_in_ns{0}, g_submit_ns{0}, g_wait_ns{0}, g_sync_out_ns{0};
 
 /* One xrt::device per process: device open measured 12.3 ms, and XRT does not
  * appreciate repeated opens. */
@@ -93,21 +101,31 @@ int8_t  *Program::a_map() { return p_->bo_a.map<int8_t *>(); }
 int32_t *Program::c_map() { return p_->bo_c.map<int32_t *>(); }
 
 void Program::run_mapped(const Weights &w) {
+    using nsec = std::chrono::nanoseconds;
     const auto t0 = std::chrono::steady_clock::now();
 
     p_->bo_a.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+    const auto t1 = std::chrono::steady_clock::now();
 
     auto run = p_->kern(3, p_->bo_insts, (uint32_t)p_->insts_bytes,
                         p_->bo_a, w.p_->bo, p_->bo_c);
+    const auto t2 = std::chrono::steady_clock::now();
+
     const auto state = run.wait();
     if (state != ERT_CMD_STATE_COMPLETED)
         throw std::runtime_error("NPU dispatch did not complete, ert state " +
                                  std::to_string(static_cast<int>(state)));
+    const auto t3 = std::chrono::steady_clock::now();
 
     p_->bo_c.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    const auto t4 = std::chrono::steady_clock::now();
 
-    const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                        std::chrono::steady_clock::now() - t0).count();
+    g_sync_in_ns .fetch_add((uint64_t)std::chrono::duration_cast<nsec>(t1-t0).count(), std::memory_order_relaxed);
+    g_submit_ns  .fetch_add((uint64_t)std::chrono::duration_cast<nsec>(t2-t1).count(), std::memory_order_relaxed);
+    g_wait_ns    .fetch_add((uint64_t)std::chrono::duration_cast<nsec>(t3-t2).count(), std::memory_order_relaxed);
+    g_sync_out_ns.fetch_add((uint64_t)std::chrono::duration_cast<nsec>(t4-t3).count(), std::memory_order_relaxed);
+
+    const auto ns = std::chrono::duration_cast<nsec>(t4 - t0).count();
     g_dispatches.fetch_add(1, std::memory_order_relaxed);
     g_dispatch_ns.fetch_add((uint64_t)ns, std::memory_order_relaxed);
 }
@@ -124,7 +142,15 @@ int64_t Program::n()      const { return p_->N; }
 
 uint64_t Program::dispatch_count() { return g_dispatches.load(std::memory_order_relaxed); }
 double   Program::dispatch_ms()    { return g_dispatch_ns.load(std::memory_order_relaxed) / 1e6; }
-void     Program::reset_counters() { g_dispatches = 0; g_dispatch_ns = 0; }
+void     Program::reset_counters() { g_dispatches = 0; g_dispatch_ns = 0;
+    g_sync_in_ns = 0; g_submit_ns = 0; g_wait_ns = 0; g_sync_out_ns = 0; }
+
+void Program::breakdown_ms(double *sync_in, double *submit, double *wait, double *sync_out) {
+    *sync_in  = g_sync_in_ns.load()  / 1e6;
+    *submit   = g_submit_ns.load()   / 1e6;
+    *wait     = g_wait_ns.load()     / 1e6;
+    *sync_out = g_sync_out_ns.load() / 1e6;
+}
 
 bool device_available() {
     try { (void)shared_device(); return true; }
