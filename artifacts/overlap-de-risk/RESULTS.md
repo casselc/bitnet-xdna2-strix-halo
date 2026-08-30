@@ -7,7 +7,7 @@ mechanism with a smaller experiment first. **The pipeline is deliberately not
 implemented here.**
 
 Base commit: `fb4493e9241cf82b3d1a3b03a0780aa0dc333585` (`next-pass-results`).
-Branch: `overlap-de-risk`. `main` was at `885df0ca` and was not touched.
+Branch: `overlap-de-risk`, ending at `5eba847943a05c6a0e55b7cbdf15bf44ed49307e`. `main` was at `885df0ca` and was not touched.
 
 Every claim below is tagged:
 
