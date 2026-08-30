@@ -64,3 +64,52 @@ are 0, 1024 and 2048. Ratios 0.25-0.625 all resolve to 1024 and measure the same
 within noise (1122-1193 t/s); 0.75 and 1.0 both resolve to 2048 and collapse back
 to exclusive offload (837-867 t/s). The apparent "optimum at 0.5" is really
 "one tile each", and finer control needs a smaller tile.
+
+## Two findings from an adversarial review pass
+
+### The CPU baseline is the *stronger* of the fork's two kernels, not the weaker
+
+`-DGGML_LLAMAFILE=OFF` is required for our hook to be reachable, and it disables
+`tinyBLAS_I2S_AVX` (`ggml/src/ggml-cpu/llamafile/sgemm.cpp:1357`) — a real
+register-tiled AVX2 I2_S kernel with the epilogue fused inline. That looked like a
+serious confound: we might have been benchmarking against a deliberately weakened
+CPU.
+
+Measured, both at `-ub 2048`, 4 reps, alternated:
+
+| prompt | llamafile **OFF** (our baseline) | llamafile **ON** |
+|---:|---:|---:|
+| 512 | 900.2 | 841.9 |
+| 2048 | **1033.2** | 710.1 |
+| 3968 | 826.8 | 739.7 |
+
+`tinyBLAS_I2S_AVX` is **slower** than the `ggml_gemm_i2_i8_s` path for this model,
+by up to 1.45x. So the baseline we have been comparing against is the faster of the
+two CPU kernels, and the "vs CPU" ratios are if anything conservative. Worth stating
+plainly, because the opposite was a reasonable thing to suspect.
+
+### Only 147 of 150 offloadable tensors are resident — and that is correct
+
+Instrumenting every rejection shows **zero failures** and **147 resident tensors**,
+not the expected 150. The pattern is exactly `2x30 + 3x29`: every layer's `attn_q`
+and `attn_output` are offloaded, but one layer's `ffn_gate`/`ffn_up`/`ffn_down` are
+not.
+
+The cause is a llama.cpp optimization, not a bug. `src/models/bitnet.cpp:114`:
+
+```c
+if (il == n_layer - 1 && inp_out_ids) {
+    cur   = ggml_get_rows(ctx0,   cur, inp_out_ids);
+    inpSA = ggml_get_rows(ctx0, inpSA, inp_out_ids);
+}
+```
+
+At the last layer, after attention and *before* the FFN, the token set is reduced to
+just the output tokens — 1 for benchmarking. So that FFN legitimately runs with
+`ne11 = 1`, falls below the offload threshold, and correctly stays on the CPU.
+
+This matters for how the correctness evidence should be read: "perplexity identical
+while N matmuls ran on the NPU" is only as strong as the coverage behind it, and the
+coverage is now measured and explained rather than assumed. The runtime also now
+logs any tensor it declines to offload, with the reason, so a genuine silent
+fallback cannot hide.

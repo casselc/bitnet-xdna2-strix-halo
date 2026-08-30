@@ -60,21 +60,33 @@ Result: **mean dispatch 4.334 ms -> 1.211 ms**, essentially the isolated figure.
 
 ## Where the time goes now
 
-For one pp2048 prefill:
+**CORRECTION.** An earlier version of this section said "777 ms (24%) NPU / 2482 ms
+(76%) CPU". That was wrong by 2x, and it mattered: it was the sole support for the
+claim that the NPU is "the faster engine".
+
+The error was in deriving per-prefill dispatches from an aggregate counter. That
+run used the **default `-ub 512`**, so `pp2048` is **four** micro-batches, not two.
+The counter says 13482 dispatches over the whole sweep = 42 micro-batch-equivalents
+= 321 each, so pp2048 is 4 x 321 = **1284 dispatches, not 642**. Verified directly:
+a single `-p 2048 -ub 2048 -r 1` run reports `dispatches=642` for *one* 2048-token
+micro-batch, i.e. 321 per 512 tokens.
+
+For one pp2048 prefill, corrected:
 
 ```
-NPU device time  :  777 ms  (24%)   642 dispatches x 1.211 ms
-serial CPU work  : 2482 ms  (76%)   <- the NPU is idle for all of it
+NPU device time  : 1555 ms  (48%)   1284 dispatches x 1.211 ms
+serial CPU work  : 1704 ms  (52%)
 total            : 3259 ms
 CPU-only, everything : 2009 ms
 ```
 
-The NPU now does its share of the arithmetic in **777 ms against the CPU's 2009 ms
-for the whole prefill** — it is genuinely the faster engine for that work. The
-loss is entirely structural: offload is *exclusive*, so 16 CPU cores idle on a
-barrier for 76% of the wall clock, and the hybrid additionally pays for staging
-int32 accumulators and the f32 epilogue that CPU-only fuses into its kernel.
+So the NPU takes 1555 ms to do ~90% of the linear FLOPs while the CPU does *all*
+of them plus attention, RoPE, norms, k/v and the f16 lm_head in 2009 ms. **The two
+engines are roughly comparable on this arithmetic; the NPU is not clearly faster.**
+Concurrency remained the right next lever -- two comparable engines running at once
+is still a ~2x opportunity, and it did deliver -- but the reasoning that it "must"
+win because the NPU was faster was unsupported.
 
-**The next lever is concurrency, not the kernel.** Splitting each GEMM's output
-rows between NPU and CPU so both work simultaneously is the obvious move, and on
-these numbers it is worth substantially more than any remaining kernel tuning.
+Note also that at `-ub 512` every 512-token batch is zero-padded to the 1024-token
+tile, so roughly half of that 1555 ms is arithmetic on zeros. See
+`concurrent_results.md`.

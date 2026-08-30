@@ -1,5 +1,13 @@
 # Decision gate: **MVP PASS** — with a negative performance result
 
+> **STATUS: this document records the ORIGINAL gate (round 1) and its numbers are
+> superseded.** Two later rounds changed the result. Current numbers live in
+> [`e2e/tuned_results.md`](e2e/tuned_results.md) (kernel tuning + single hardware
+> context) and [`e2e/concurrent_results.md`](e2e/concurrent_results.md)
+> (concurrent CPU+NPU execution, which turned the loss into a **1.12x win at 2048
+> tokens**). The performance tables and cost decomposition below describe the
+> round-1 runtime and no longer hold. Corrections applied in place are marked.
+
 ## The gate, item by item
 
 The milestone defines PASS as: *a real BitNet checkpoint performs NPU-assisted
@@ -65,10 +73,18 @@ Halo — turned out to be substantially pessimistic here:
 | | published | measured on this machine |
 |---|---|---|
 | dispatch round trip | 0.66 ms | **0.197 ms** (3.3x better) |
-| xclbin/context switch | 2.67 ms | **0.101–0.22 ms** (12–26x better) |
+| xclbin/context switch | 2.67 ms | 0.101–0.22 ms — **RETRACTED, see below** |
 
-Dispatch overhead is therefore *not* the blocker, which is what the design was
-built to guard against. The blocker is kernel throughput.
+**Retraction on the switch-cost row.** That 0.101–0.22 ms was measured on two
+trivial elementwise `add_one`/`add_two` kernels at N=4096 via Python `@iron.jit` —
+nothing like an 8-column GEMM design. Re-measured with the actual designs, a
+hardware-context switch costs **+1.2 to +2.4 ms per dispatch** (+53% to +210%),
+i.e. comparable to or worse than the published figure it claimed to beat. It went
+on to be the single largest cost in the runtime. See
+[`kernels/context_switching.md`](kernels/context_switching.md).
+
+Dispatch *submission* overhead is genuinely small (measured at 1-2% of dispatch
+time). Context switching is not, and the original framing conflated them.
 
 ## The narrowest next experiment
 
@@ -83,9 +99,13 @@ kernel-engineering question in a single file, answerable without touching the
 integration — which is finished, correct, and instrumented.
 
 Two cheaper follow-ups worth folding in:
-1. **int4 weights** using the native `8b x 4b` `4x16x16` mmul: 1024 MAC/cycle
-   (2x) and half the weight DMA. The ternary values fit int4 exactly, so this
-   costs no accuracy.
+1. **int4 weights** — for *footprint and DMA only*. **Correction to an earlier
+   claim in this file:** int4 does **not** double MAC throughput on this part.
+   AMD's AI Engine-ML intrinsics guide states the `8b x 4b` group is *"emulated
+   on top of int8 x int8"*, and only one shape exists (`4x16_16x8`). So int4
+   buys halved weight traffic (1843 -> 922 MiB resident) and nothing in TOPS.
+   Still worth doing for residency and for any future decode path, but it is not
+   the 2x free lunch this document originally asserted.
 2. **Concurrent split** rather than exclusive offload: give the NPU a fraction of
    the output rows and the CPU the rest simultaneously. Today thread 0 dispatches
    while 15 threads idle on a barrier; measured NPU/CPU concurrency on Strix Halo

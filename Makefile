@@ -40,7 +40,18 @@ $(BUILD)/npu_gemm_bench: tools/npu_gemm_bench.cpp $(RT_CXX) | $(BUILD)
 $(BUILD)/npu_switch_cost: tools/npu_switch_cost.cpp $(RT_CXX) | $(BUILD)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(XRTINC) $(XRTLIB)
 
-check-cpu: $(BUILD)/test_i2s_packing $(BUILD)/test_coordinates $(BUILD)/test_i2s_realdata
+TENSOR := artifacts/correctness/tensors/attn_q_l0.packed
+GGUF   := models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf
+
+# The tests validate against a real weight slice, which is deliberately not
+# checked in (it is model data). Extract it on demand so `make check` works on a
+# fresh clone instead of failing with "cannot open ...".
+$(TENSOR):
+	@test -f $(GGUF) || { echo "missing $(GGUF) -- see artifacts/reproduce.md step 1"; exit 1; }
+	@mkdir -p $(dir $@)
+	.venv/bin/python tools/gguf_extract.py $(GGUF) blk.0.attn_q.weight artifacts/correctness/tensors/attn_q_l0
+
+check-cpu: $(BUILD)/test_i2s_packing $(BUILD)/test_coordinates $(BUILD)/test_i2s_realdata $(TENSOR)
 	@echo "=== CPU-only tests (no NPU needed) ==="
 	@$(BUILD)/test_i2s_packing
 	@echo
@@ -48,7 +59,7 @@ check-cpu: $(BUILD)/test_i2s_packing $(BUILD)/test_coordinates $(BUILD)/test_i2s
 	@echo
 	@$(BUILD)/test_i2s_realdata
 
-check-npu: $(BUILD)/test_xdna_gemm
+check-npu: $(BUILD)/test_xdna_gemm $(TENSOR)
 	@echo "=== NPU tests ==="
 	@$(BUILD)/test_xdna_gemm
 

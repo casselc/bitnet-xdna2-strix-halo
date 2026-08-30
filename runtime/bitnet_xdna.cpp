@@ -158,9 +158,20 @@ void build_b_kn(const void *src0, int64_t K, int64_t N,
     }
 }
 
+/* Tensors that failed to become resident. Without this, a failure is retried on
+ * every prefill forever -- rebuilding and discarding a multi-MB slab each time --
+ * and never surfaces. */
+std::map<const void *, std::string> g_failed;
+
 Resident *get_resident(const void *src0, int64_t K, int64_t N) {
+    if (g_failed.count(src0)) return nullptr;
     auto it = g_resident.find(src0);
-    if (it != g_resident.end()) return it->second.get();
+    if (it != g_resident.end()) {
+        /* Guard against pointer reuse: the cached plan and chunks belong to the
+         * shape they were built for, but the caller supplies K/N independently. */
+        if (it->second->K != K || it->second->N != N) return nullptr;
+        return it->second.get();
+    }
 
     ShapePlan plan;
     if (!plan_for(K, N, &plan)) return nullptr;
@@ -188,6 +199,22 @@ Resident *get_resident(const void *src0, int64_t K, int64_t N) {
     return raw;
 }
 
+/* Wrapper so every failure path is recorded exactly once. */
+Resident *get_resident_logged(const void *src0, int64_t K, int64_t N) {
+    if (g_failed.count(src0)) return nullptr;
+    try {
+        Resident *r = get_resident(src0, K, N);
+        if (!r) g_failed.emplace(src0, "plan/shape rejected");
+        return r;
+    } catch (const std::exception &e) {
+        g_failed.emplace(src0, e.what());
+        return nullptr;
+    } catch (...) {
+        g_failed.emplace(src0, "unknown exception");
+        return nullptr;
+    }
+}
+
 } // namespace
 
 extern "C" {
@@ -209,11 +236,19 @@ static void print_stats_atexit(void) {
             "[bitnet-xdna] sync_in %.0f ms (%.0f%%)  submit %.0f ms (%.0f%%)  "
             "wait %.0f ms (%.0f%%)  sync_out %.0f ms (%.0f%%)\n",
             si, 100*si/tot, su, 100*su/tot, wa, 100*wa/tot, so, 100*so/tot);
+    if (!g_failed.empty()) {
+        std::fprintf(stderr, "[bitnet-xdna] %zu tensor(s) NOT offloaded:\n", g_failed.size());
+        for (auto &kv : g_failed)
+            std::fprintf(stderr, "[bitnet-xdna]   %p : %s\n", kv.first, kv.second.c_str());
+    }
+    std::fprintf(stderr, "[bitnet-xdna] resident tensors: %zu\n", g_resident.size());
     for (auto &kv : g_shape_stats) {
         const uint64_t cnt = kv.second->n.load();
         if (!cnt) continue;
         const double ms = kv.second->ns.load() / 1e6 / (double)cnt;
-        const double tops = 2.0 * (double)kMTile * (double)kv.first.first * (double)kv.first.second
+        /* Every dispatch computes one kMTile x kKChunk x kNChunk chunk regardless
+         * of the logical shape, so that -- not K*N -- is the work per dispatch. */
+        const double tops = 2.0 * (double)kMTile * (double)kKChunk * (double)kNChunk
                             / (ms * 1e-3) / 1e12;
         std::fprintf(stderr, "[bitnet-xdna]   K=%-5lld N=%-5lld  n=%-6llu  %6.3f ms  %5.2f TOPS\n",
                      (long long)kv.first.first, (long long)kv.first.second,
@@ -291,7 +326,7 @@ int bitnet_xdna_accumulate(const void *src0_i2s, int64_t K, int64_t N,
                            const int8_t *a_q, int64_t T, size_t a_row_stride) {
     try {
         std::lock_guard<std::mutex> lock(g_mu);
-        Resident *res = get_resident(src0_i2s, K, N);
+        Resident *res = get_resident_logged(src0_i2s, K, N);
         if (!res) return 0;
         const ShapePlan plan = res->plan;
         xdna::Program *prog = program_for(single_stem(), kKChunk, kNChunk);
@@ -328,7 +363,18 @@ int bitnet_xdna_accumulate(const void *src0_i2s, int64_t K, int64_t N,
                                     a_q + (size_t)(t0 + r) * a_row_stride + k_off,
                                     (size_t)k_keep);
 
+                    const auto d0 = std::chrono::steady_clock::now();
                     prog->run_mapped(*res->chunks[(size_t)nc * plan.k_chunks + kc]);
+                    {   // per-shape accounting, keyed on the LOGICAL tensor shape
+                        const auto dns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                             std::chrono::steady_clock::now() - d0).count();
+                        auto key = std::make_pair(K, N);
+                        auto it2 = g_shape_stats.find(key);
+                        if (it2 == g_shape_stats.end())
+                            it2 = g_shape_stats.emplace(key, new ShapeStat()).first;
+                        it2->second->n.fetch_add(1, std::memory_order_relaxed);
+                        it2->second->ns.fetch_add((uint64_t)dns, std::memory_order_relaxed);
+                    }
 
                     if (plan.k_chunks == 1) {
                         for (int64_t r = 0; r < rows; ++r)

@@ -25,7 +25,7 @@ index fd5ba9989..87f21c7d3 100644
          find_library(ACCELERATE_FRAMEWORK Accelerate)
          if (ACCELERATE_FRAMEWORK)
 diff --git a/ggml/src/ggml-cpu/ggml-cpu.c b/ggml/src/ggml-cpu/ggml-cpu.c
-index ec88ef29a..1bac7127e 100644
+index ec88ef29a..d3509907a 100644
 --- a/ggml/src/ggml-cpu/ggml-cpu.c
 +++ b/ggml/src/ggml-cpu/ggml-cpu.c
 @@ -56,6 +56,13 @@
@@ -42,7 +42,7 @@ index ec88ef29a..1bac7127e 100644
  #ifdef GGML_USE_CPU_RISCV64_SPACEMIT
  #    include "spacemit/ime.h"
  #endif
-@@ -1492,7 +1499,52 @@ UseGgmlGemm2:;
+@@ -1492,7 +1499,106 @@ UseGgmlGemm2:;
      if (src0->type == GGML_TYPE_I2_S && ggml_n_dims(src0) == 2) {
          const void * src1_wdata = (src1->type == vec_dot_type) ? src1->data : params->wdata;
          const size_t i2s_row_size = ggml_row_size(vec_dot_type, ne10);
@@ -54,42 +54,96 @@ index ec88ef29a..1bac7127e 100644
 +        const size_t src1_col_stride = i2s_src1_cont || src1->type != vec_dot_type ? i2s_row_size : nb11;
 +
 +#ifdef GGML_BITNET_XDNA
-+        // NPU-assisted prefill. Deliberately placed BEFORE the per-thread row
-+        // split below: the CPU path shards ne01 across threads and calls
-+        // ggml_gemm_i2_i8_s with only 4 tokens at a time, which would mean one
-+        // NPU dispatch per 4 tokens per layer. One dispatch must see the whole
-+        // ne11-token batch, so thread 0 does the work and the rest wait.
++        // NPU-assisted prefill, run CONCURRENTLY with the CPU threads.
 +        //
-+        // Decode (ne11 small) never qualifies and is untouched, which is what
-+        // keeps CPU decode semantics identical to the CPU-only build.
++        // Placed before the per-thread row split below: the CPU path shards ne01
++        // across threads and calls ggml_gemm_i2_i8_s with only 4 tokens at a
++        // time, so hooking there would mean one NPU dispatch per 4 tokens.
++        //
++        // The batch is split by token: thread 0 drives the NPU over tokens
++        // [0, t_npu) while threads 1..nth-1 compute [t_npu, ne11) on the CPU.
++        // Exclusive offload left those cores idle on a barrier for ~76% of a
++        // prefill, which is why it lost despite the NPU being the faster engine
++        // for this arithmetic.
++        //
++        // Decode (ne11 small) never qualifies, so CPU decode is untouched.
 +        if (bitnet_xdna_available() &&
 +            bitnet_xdna_worth_it(ne11) &&
 +            bitnet_xdna_supports(ne00, ne01)) {
-+            // Thread 0 owns the device (the NPU is single-tenant and hardware
-+            // contexts time-slice the whole array), but the f32 epilogue is
-+            // ne11*ne01 elements of pure bandwidth -- leaving 15 threads
-+            // spinning through it costs more than the kernel it follows. So:
-+            // accumulate on thread 0, then everyone converts a row slice.
-+            static _Atomic int xdna_result;
-+            if (ith == 0) {
-+                atomic_store(&xdna_result,
-+                             bitnet_xdna_accumulate(src0->data, ne00, ne01,
-+                                                    (const int8_t *)src1_wdata,
-+                                                    ne11, src1_col_stride));
-+            }
-+            ggml_barrier(params->threadpool);
 +
-+            if (atomic_load(&xdna_result)) {
-+                const float * xs  = (const float *)((const char *)src1_wdata + (ne11 * ne10));
-+                const float   xws = *(const float *)((const uint8_t *)src0->data + (ne00 * ne01 / 4));
-+                const int64_t rb  = (ith       * ne11) / nth;
-+                const int64_t re  = ((ith + 1) * ne11) / nth;
-+                bitnet_xdna_epilogue(ne01, rb, re, xs, xws, (float *)dst->data, nb1);
-+                // Barrier before returning: the accumulator buffer is shared and
-+                // the next mul_mat's thread 0 must not start overwriting it while
-+                // a straggler is still reading.
++            const int64_t t_npu = (nth > 1) ? bitnet_xdna_token_split(ne11) : ne11;
++            if (t_npu > 0) {
++                static _Atomic int xdna_result;
++
++                if (ith == 0) {
++                    atomic_store(&xdna_result,
++                                 bitnet_xdna_accumulate(src0->data, ne00, ne01,
++                                                        (const int8_t *)src1_wdata,
++                                                        t_npu, src1_col_stride));
++                } else if (t_npu < ne11) {
++                    // The CPU's share: tokens [t_npu, ne11), ne01 sharded over
++                    // threads 1..nth-1. Same arithmetic as the block below,
++                    // restricted to a token range and one fewer thread.
++                    const int64_t cith = ith - 1, cnth = nth - 1;
++                    const int64_t mnc  = 4;
++                    int64_t s0 = (cith * ne01) / cnth;
++                    int64_t s1 = ((cith + 1) * ne01) / cnth;
++                    s0 = (s0 % mnc) ? s0 + mnc - (s0 % mnc) : s0;
++                    s1 = (s1 % mnc) ? s1 + mnc - (s1 % mnc) : s1;
++                    if (s0 < s1) {
++                        const float * xsc = (const float *)((const char *)src1_wdata + (ne11 * ne10));
++                        const int32_t * xsm = (const int32_t *)((const char *)xsc + ne11 * sizeof(float));
++                        const float xws = *(const float *)((const uint8_t *)src0->data + (ne00 * ne01 / 4));
++                        const int64_t nr = s1 - s0;
++                        float * tmp = (float *)alloca(nr * 4 * sizeof(float));
++
++                        int64_t c = t_npu;
++                        for (; c + 4 <= ne11; c += 4) {
++                            ggml_gemm_i2_i8_s(ne00, tmp, nr,
++                                (const char *)src0->data + s0 * nb01 / 4,
++                                (const char *)src1_wdata + src1_col_stride * c,
++                                4, nr);
++                            for (int64_t j = 0; j < 4; j++) {
++                                float * drow = (float *)((char *)dst->data + (c + j) * nb1) + s0;
++                                const float ps = xws / xsc[c + j];
++                                const int32_t as = xsm[c + j];
++                                for (int64_t r = 0; r < nr; r++)
++                                    drow[r] = (tmp[j * nr + r] - as) * ps;
++                            }
++                        }
++                        for (; c < ne11; c++) {
++                            ggml_gemv_i2_i8_s(ne00, tmp, ne01,
++                                (const char *)src0->data + s0 * nb01 / 4,
++                                (const char *)src1_wdata + src1_col_stride * c,
++                                1, nr);
++                            float * drow = (float *)((char *)dst->data + c * nb1) + s0;
++                            const float ps = xws / xsc[c];
++                            const int32_t as = xsm[c];
++                            for (int64_t r = 0; r < nr; r++)
++                                drow[r] = (tmp[r] - as) * ps;
++                        }
++                    }
++                }
++
 +                ggml_barrier(params->threadpool);
-+                return;
++
++                if (atomic_load(&xdna_result)) {
++                    // Convert the NPU's int32 accumulators for tokens [0, t_npu),
++                    // sharded over every thread: it is ne01*t_npu elements of pure
++                    // bandwidth and single-threading it costs more than the kernel.
++                    const float * xs  = (const float *)((const char *)src1_wdata + (ne11 * ne10));
++                    const float   xws = *(const float *)((const uint8_t *)src0->data + (ne00 * ne01 / 4));
++                    const int64_t rb  = (ith       * t_npu) / nth;
++                    const int64_t re  = ((ith + 1) * t_npu) / nth;
++                    bitnet_xdna_epilogue(ne01, rb, re, xs, xws, (float *)dst->data, nb1);
++                    // The accumulator buffer is shared: no thread may leave before
++                    // every reader is done with it.
++                    ggml_barrier(params->threadpool);
++                    return;
++                }
++                // NPU failed. The CPU threads already produced [t_npu, ne11), but
++                // the block below recomputes it identically, so falling through is
++                // correct -- just wasted work on a path that should not occur.
 +            }
 +        }
 +#endif

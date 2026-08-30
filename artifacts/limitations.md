@@ -14,9 +14,14 @@
 
 ## Performance
 
-- **The hybrid path is slower than CPU-only at every prompt length** (0.27x at
-  128 tokens, 0.66–0.75x at 512–3968). See `e2e/results.md`. The mechanism works;
-  the economics currently do not.
+> **Superseded.** These were the round-1 numbers. After kernel tuning, removing
+> hardware-context switching, and running the CPU and NPU concurrently, the hybrid
+> **beats CPU-only by 1.12x at 2048 tokens and 1.08x at 3968**, and declines to
+> offload below one NPU tile (matching CPU-only exactly rather than regressing).
+> See `e2e/concurrent_results.md`.
+
+- Round 1: the hybrid was slower than CPU-only at every prompt length (0.27x at
+  128 tokens, 0.66–0.75x at 512–3968).
 - The stock mlir-aie `whole_array` kernel reaches ~9.3 TOPS against a ~50 TOPS
   device peak (~19%). Published hand-tuned XDNA2 int8 GEMM reaches 38–56 TOPS, so
   roughly 4–6x of kernel headroom is untouched. No custom AIE kernel was written.
@@ -31,8 +36,15 @@
 - Bit-exactness is demonstrated for the `2560x2560` shape against real GGUF
   weights. The other two shapes are exercised end-to-end (identical generated
   text) but do not have a dedicated bit-exactness test.
-- Output equivalence was checked on one controller-style prompt with greedy
-  sampling. No perplexity regression run was performed.
+- Perplexity is used as the end-to-end equivalence check and is identical to
+  CPU-only (`307.5806 +/- 27.85495`) at every configuration tested. Two caveats:
+  the corpus is synthetic (shuffled n-grams over a ~20-word vocabulary, hence
+  PPL ~307), and 4 printed decimal places bounds the smallest divergence the test
+  can detect at ~1e-6 relative.
+- **Offload coverage is 147 of 150 candidate tensors, and that is correct, not a
+  gap:** llama.cpp reduces the last layer to the output tokens before its FFN
+  (`src/models/bitnet.cpp:114`), so that FFN sees 1 token and stays on CPU. The
+  runtime now logs any tensor it declines to offload, with the reason.
 
 ## Contract caveats
 
