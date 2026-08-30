@@ -55,7 +55,7 @@ def main():
     ap.add_argument("--out", default="artifacts/overlap-de-risk/baseline.csv")
     a = ap.parse_args()
 
-    configs = [(15, False), (15, True), (8, False), (8, True)]
+    configs = [(15, False), (15, True), (8, True), (4, True)]
     rows = []
     print(f"baseline: pp{a.prompt} ub{a.ub}; {len(configs)} configs x {a.reps} interleaved reps")
     for rep in range(1, a.reps+1):

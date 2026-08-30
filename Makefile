@@ -14,7 +14,7 @@ BUILD   := build
 RT_C    := runtime/bitnet_i2s.c runtime/bitnet_coord.c
 RT_CXX  := runtime/xdna_gemm.cpp
 
-.PHONY: all check check-cpu check-npu clean
+.PHONY: all check check-cpu check-npu check-patch clean
 all: $(BUILD)/test_i2s_packing $(BUILD)/test_coordinates \
      $(BUILD)/test_i2s_realdata $(BUILD)/test_xdna_gemm \
      $(BUILD)/npu_probe $(BUILD)/npu_gemm_bench $(BUILD)/npu_switch_cost \
@@ -74,7 +74,31 @@ check-npu: $(BUILD)/test_xdna_gemm $(BUILD)/test_xdna_shapes $(TENSOR) $(SHAPE_T
 	@echo
 	@BITNET_XDNA=1 BITNET_XDNA_ARTIFACTS=$(CURDIR)/artifacts/xclbin-tuned $(BUILD)/test_xdna_shapes
 
-check: check-cpu check-npu
+# --- patch reproducibility ------------------------------------------------
+# patches/001-bitnet-xdna.patch has silently gone stale more than once, which
+# makes a benchmark from build-xdnaN non-reproducible: the checked-in patch would
+# have produced different source than the one measured. This regenerates the diff
+# from the pinned BitNet tree and fails if it differs, and verifies the patch
+# still applies to a pristine checkout of that tree.
+LLAMA := refs/BitNet/3rdparty/llama.cpp
+check-patch:
+	@echo "=== patch reproducibility ==="
+	@cd $(LLAMA) && git diff > /tmp/.patchcheck.live
+	@if diff -q /tmp/.patchcheck.live patches/001-bitnet-xdna.patch >/dev/null; then \
+	    echo "  ok  checked-in patch matches the working tree being built"; \
+	else \
+	    echo "  FAIL checked-in patch differs from the source actually built:"; \
+	    diff -u patches/001-bitnet-xdna.patch /tmp/.patchcheck.live | head -40; \
+	    rm -f /tmp/.patchcheck.live; exit 1; \
+	fi
+	@rm -rf /tmp/.patchcheck.tree && mkdir -p /tmp/.patchcheck.tree
+	@cd $(LLAMA) && git archive HEAD | tar -x -C /tmp/.patchcheck.tree
+	@cd /tmp/.patchcheck.tree && git apply --check $(CURDIR)/patches/001-bitnet-xdna.patch \
+	    && echo "  ok  patch applies cleanly to a pristine checkout of the pinned tree" \
+	    || { echo "  FAIL patch does not apply to the pinned tree"; exit 1; }
+	@rm -rf /tmp/.patchcheck.tree /tmp/.patchcheck.live
+
+check: check-patch check-cpu check-npu
 
 clean:
 	rm -rf $(BUILD)

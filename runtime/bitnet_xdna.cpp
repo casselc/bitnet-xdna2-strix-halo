@@ -118,8 +118,35 @@ std::atomic<uint64_t> g_epilogue_elems{0};
 /* Per-shape dispatch accounting. The aggregate mean (2.66 ms) sits well above
  * the weighted mean of the three kernels measured standalone (1.44 ms), and an
  * aggregate cannot say which shape is responsible. Keyed by (K,N-chunk). */
-struct ShapeStat { std::atomic<uint64_t> n{0}, ns{0}; };
+/* Per-logical-shape output-path accounting. The aggregate stage_out counter
+ * cannot answer where C-output time goes, and in particular it lives inside the
+ * k_chunks == 1 branch, so it never measured ffn_down's deep-K partial
+ * accumulation at all. Everything below is keyed on the LOGICAL tensor shape
+ * (K, N) so each of the three real shapes is separable. */
+struct ShapeStat {
+    std::atomic<uint64_t> n{0}, ns{0};          // dispatches, total dispatch time
+    std::atomic<uint64_t> wait_ns{0};           // blocked on the NPU fence
+    std::atomic<uint64_t> sync_out_ns{0};       // XRT sync C from device
+    std::atomic<uint64_t> submit_ns{0};
+    std::atomic<uint64_t> stage_in_ns{0},   stage_in_bytes{0};
+    std::atomic<uint64_t> stage_out_ns{0},  stage_out_bytes{0};   // k_chunks == 1
+    std::atomic<uint64_t> partacc_ns{0},    partacc_bytes{0};     // k_chunks > 1 accumulate
+    std::atomic<uint64_t> partcopy_ns{0},   partcopy_bytes{0};    // part -> g_acc
+    std::atomic<uint64_t> epi_ns{0},        epi_elems{0};         // summed over threads
+};
 std::map<std::pair<int64_t,int64_t>, ShapeStat*> g_shape_stats;
+/* Set by accumulate before its barrier; read by the epilogue after it. One
+ * mul_mat node is exactly one accumulate followed by one epilogue with a
+ * ggml_barrier between, so a single current-shape pointer is well-defined for
+ * the epilogue's duration. */
+std::atomic<ShapeStat *> g_cur_shape{nullptr};
+
+ShapeStat *shape_stat(int64_t K, int64_t N) {
+    auto key = std::make_pair(K, N);
+    auto it = g_shape_stats.find(key);
+    if (it == g_shape_stats.end()) it = g_shape_stats.emplace(key, new ShapeStat()).first;
+    return it->second;
+}
 std::atomic<uint64_t> g_resident_bytes{0};
 
 int  g_state = -1;        // -1 unknown, 0 unavailable, 1 available
@@ -279,17 +306,49 @@ static void print_stats_atexit(void) {
             std::fprintf(stderr, "[bitnet-xdna]   %p : %s\n", kv.first, kv.second.c_str());
     }
     std::fprintf(stderr, "[bitnet-xdna] resident tensors: %zu\n", g_resident.size());
-    for (auto &kv : g_shape_stats) {
-        const uint64_t cnt = kv.second->n.load();
-        if (!cnt) continue;
-        const double ms = kv.second->ns.load() / 1e6 / (double)cnt;
-        /* Every dispatch computes one kMTile x kKChunk x kNChunk chunk regardless
-         * of the logical shape, so that -- not K*N -- is the work per dispatch. */
-        const double tops = 2.0 * (double)kMTile * (double)kKChunk * (double)kNChunk
-                            / (ms * 1e-3) / 1e12;
-        std::fprintf(stderr, "[bitnet-xdna]   K=%-5lld N=%-5lld  n=%-6llu  %6.3f ms  %5.2f TOPS\n",
-                     (long long)kv.first.first, (long long)kv.first.second,
-                     (unsigned long long)cnt, ms, tops);
+    /* Per-logical-shape output-path table. Machine-readable when
+     * BITNET_XDNA_SHAPE_CSV=<path> is set, so tools can consume it directly. */
+    {
+        FILE *csv = nullptr;
+        if (const char *cp = std::getenv("BITNET_XDNA_SHAPE_CSV")) {
+            csv = std::fopen(cp, "w");
+            if (csv) std::fprintf(csv, "K,N,dispatches,dispatch_ms,submit_ms,wait_ms,"
+                                       "sync_out_ms,stage_in_ms,stage_in_mb,stage_out_ms,"
+                                       "stage_out_mb,partacc_ms,partacc_mb,partcopy_ms,"
+                                       "partcopy_mb,epi_thread_ms,epi_melem\n");
+        }
+        std::fprintf(stderr,
+            "[bitnet-xdna] per-shape output path (ms; stage/part are thread-0 serial, "
+            "epi is summed over threads)\n"
+            "[bitnet-xdna]   %-13s %6s %8s %8s %9s %9s %10s %9s %10s %10s\n",
+            "K x N", "n", "disp", "wait", "sync_out", "stage_in", "stage_out",
+            "partacc", "partcopy", "epi(thr)");
+        for (auto &kv : g_shape_stats) {
+            ShapeStat *v = kv.second;
+            const uint64_t cnt = v->n.load();
+            if (!cnt) continue;
+            char shape[32];
+            std::snprintf(shape, sizeof shape, "%lldx%lld",
+                          (long long)kv.first.first, (long long)kv.first.second);
+            std::fprintf(stderr,
+                "[bitnet-xdna]   %-13s %6llu %8.1f %8.1f %9.1f %9.1f %10.1f %9.1f %10.1f %10.1f\n",
+                shape, (unsigned long long)cnt,
+                v->ns.load()/1e6, v->wait_ns.load()/1e6, v->sync_out_ns.load()/1e6,
+                v->stage_in_ns.load()/1e6, v->stage_out_ns.load()/1e6,
+                v->partacc_ns.load()/1e6, v->partcopy_ns.load()/1e6, v->epi_ns.load()/1e6);
+            if (csv)
+                std::fprintf(csv, "%lld,%lld,%llu,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,"
+                                  "%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n",
+                    (long long)kv.first.first, (long long)kv.first.second,
+                    (unsigned long long)cnt, v->ns.load()/1e6, v->submit_ns.load()/1e6,
+                    v->wait_ns.load()/1e6, v->sync_out_ns.load()/1e6,
+                    v->stage_in_ns.load()/1e6, v->stage_in_bytes.load()/1048576.0,
+                    v->stage_out_ns.load()/1e6, v->stage_out_bytes.load()/1048576.0,
+                    v->partacc_ns.load()/1e6, v->partacc_bytes.load()/1048576.0,
+                    v->partcopy_ns.load()/1e6, v->partcopy_bytes.load()/1048576.0,
+                    v->epi_ns.load()/1e6, v->epi_elems.load()/1e6);
+        }
+        if (csv) std::fclose(csv);
     }
 }
 
@@ -387,6 +446,8 @@ int bitnet_xdna_accumulate(const void *src0_i2s, int64_t K, int64_t N,
 
         if ((int64_t)g_acc.size() < T * N) g_acc.resize((size_t)(T * N));
         g_acc_N = N;
+        ShapeStat *st = shape_stat(K, N);
+        g_cur_shape.store(st, std::memory_order_release);
 
         int8_t *a_bo = prog->a_map();
         const int32_t *c_bo = prog->c_map();
@@ -416,9 +477,13 @@ int bitnet_xdna_accumulate(const void *src0_i2s, int64_t K, int64_t N,
                     std::memcpy(a_bo + r * kKChunk,
                                 a_q + (size_t)(t0 + r) * a_row_stride + k_off,
                                 (size_t)k_keep);
-                g_stage_in_ns.fetch_add((uint64_t)std::chrono::duration_cast<
-                    std::chrono::nanoseconds>(std::chrono::steady_clock::now() - si0).count(),
-                    std::memory_order_relaxed);
+                {
+                    const uint64_t dt = (uint64_t)std::chrono::duration_cast<
+                        std::chrono::nanoseconds>(std::chrono::steady_clock::now() - si0).count();
+                    g_stage_in_ns.fetch_add(dt, std::memory_order_relaxed);
+                    st->stage_in_ns.fetch_add(dt, std::memory_order_relaxed);
+                    st->stage_in_bytes.fetch_add((uint64_t)(rows * k_keep), std::memory_order_relaxed);
+                }
                 prog->sync_a();                     // once per K slice, not per N chunk
 
                 /* Evacuate one finished N-chunk from a mapped output slot.
@@ -430,12 +495,19 @@ int bitnet_xdna_accumulate(const void *src0_i2s, int64_t K, int64_t N,
                         for (int64_t r = 0; r < rows; ++r)
                             std::memcpy(g_acc.data() + (t0 + r) * N + n_off,
                                         cbuf + r * kNChunk, (size_t)(n_keep * 4));
-                        g_stage_out_ns.fetch_add((uint64_t)std::chrono::duration_cast<
-                            std::chrono::nanoseconds>(std::chrono::steady_clock::now() - so0).count(),
-                            std::memory_order_relaxed);
+                        const uint64_t dt = (uint64_t)std::chrono::duration_cast<
+                            std::chrono::nanoseconds>(std::chrono::steady_clock::now() - so0).count();
+                        g_stage_out_ns.fetch_add(dt, std::memory_order_relaxed);
                         g_stage_out_bytes.fetch_add((uint64_t)(rows * n_keep * 4),
                             std::memory_order_relaxed);
+                        st->stage_out_ns.fetch_add(dt, std::memory_order_relaxed);
+                        st->stage_out_bytes.fetch_add((uint64_t)(rows * n_keep * 4),
+                            std::memory_order_relaxed);
                     } else {
+                        /* Deep-K path: int32 partial accumulation. Never counted
+                         * by the aggregate stage_out counter, which is why
+                         * ffn_down's output cost was previously unknown. */
+                        const auto pa0 = std::chrono::steady_clock::now();
                         // Summing partials over K is exact in int32:
                         // |sum| <= K * 127 * 1 fits comfortably.
                         for (int64_t r = 0; r < rows; ++r) {
@@ -443,17 +515,23 @@ int bitnet_xdna_accumulate(const void *src0_i2s, int64_t K, int64_t N,
                             const int32_t *cr = cbuf + r * kNChunk;
                             for (int64_t j2 = 0; j2 < n_keep; ++j2) pr[j2] += cr[j2];
                         }
+                        st->partacc_ns.fetch_add((uint64_t)std::chrono::duration_cast<
+                            std::chrono::nanoseconds>(std::chrono::steady_clock::now() - pa0).count(),
+                            std::memory_order_relaxed);
+                        st->partacc_bytes.fetch_add((uint64_t)(rows * n_keep * 8),
+                            std::memory_order_relaxed);   // read C + read-modify-write part
                     }
                 };
                 auto account = [&](std::chrono::steady_clock::time_point d0) {
                     const auto dns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                                          std::chrono::steady_clock::now() - d0).count();
-                    auto key = std::make_pair(K, N);
-                    auto it2 = g_shape_stats.find(key);
-                    if (it2 == g_shape_stats.end())
-                        it2 = g_shape_stats.emplace(key, new ShapeStat()).first;
-                    it2->second->n.fetch_add(1, std::memory_order_relaxed);
-                    it2->second->ns.fetch_add((uint64_t)dns, std::memory_order_relaxed);
+                    st->n.fetch_add(1, std::memory_order_relaxed);
+                    st->ns.fetch_add((uint64_t)dns, std::memory_order_relaxed);
+                    double sub, wai, so;
+                    xdna::Program::last_breakdown_ms(&sub, &wai, &so);
+                    st->submit_ns  .fetch_add((uint64_t)(sub * 1e6), std::memory_order_relaxed);
+                    st->wait_ns    .fetch_add((uint64_t)(wai * 1e6), std::memory_order_relaxed);
+                    st->sync_out_ns.fetch_add((uint64_t)(so  * 1e6), std::memory_order_relaxed);
                 };
                 const auto chunk_at = [&](int nc) -> const xdna::Weights & {
                     return *res->chunks[(size_t)nc * plan.k_chunks + kc];
@@ -491,10 +569,16 @@ int bitnet_xdna_accumulate(const void *src0_i2s, int64_t K, int64_t N,
                 }
             }
 
-            if (plan.k_chunks > 1)
+            if (plan.k_chunks > 1) {
+                const auto pc0 = std::chrono::steady_clock::now();
                 for (int64_t r = 0; r < rows; ++r)
                     std::memcpy(g_acc.data() + (t0 + r) * N,
                                 part.data() + r * N, (size_t)(N * 4));
+                st->partcopy_ns.fetch_add((uint64_t)std::chrono::duration_cast<
+                    std::chrono::nanoseconds>(std::chrono::steady_clock::now() - pc0).count(),
+                    std::memory_order_relaxed);
+                st->partcopy_bytes.fetch_add((uint64_t)(rows * N * 4), std::memory_order_relaxed);
+            }
         }
         return 1;
     } catch (...) { return 0; }
@@ -511,9 +595,15 @@ void bitnet_xdna_epilogue(int64_t N, int64_t row_begin, int64_t row_end,
         float *drow = (float *)((char *)dst + (size_t)t * dst_row_stride);
         for (int64_t j = 0; j < N; ++j) drow[j] = (float)acc[j] * post;
     }
-    g_epilogue_ns.fetch_add((uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::steady_clock::now() - ep_t0).count(), std::memory_order_relaxed);
-    g_epilogue_elems.fetch_add((uint64_t)((row_end - row_begin) * N), std::memory_order_relaxed);
+    const uint64_t ep_dt = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - ep_t0).count();
+    const uint64_t ep_el = (uint64_t)((row_end - row_begin) * N);
+    g_epilogue_ns.fetch_add(ep_dt, std::memory_order_relaxed);
+    g_epilogue_elems.fetch_add(ep_el, std::memory_order_relaxed);
+    if (ShapeStat *st = g_cur_shape.load(std::memory_order_acquire)) {
+        st->epi_ns.fetch_add(ep_dt, std::memory_order_relaxed);
+        st->epi_elems.fetch_add(ep_el, std::memory_order_relaxed);
+    }
 }
 
 int64_t bitnet_xdna_token_split_nt(int64_t n_tokens, int n_threads) {

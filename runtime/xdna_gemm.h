@@ -97,6 +97,10 @@ public:
      * cache invalidate out. Totals in ms across all dispatches. */
     static void     breakdown_ms(double *sync_in, double *submit,
                                  double *wait, double *sync_out);
+    /* Split of the MOST RECENT dispatch only, so a caller can attribute
+     * submit/wait/sync-out to the logical tensor shape it just issued. Valid
+     * only for the single owner thread that issues dispatches. */
+    static void     last_breakdown_ms(double *submit, double *wait, double *sync_out);
 
 private:
     struct Impl;

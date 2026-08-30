@@ -25,6 +25,9 @@ std::atomic<uint64_t> g_dispatch_ns{0};
  * dispatch while 15 other threads churn L3; a micro-benchmark that never
  * touches the buffers pays almost nothing. */
 std::atomic<uint64_t> g_sync_in_ns{0}, g_submit_ns{0}, g_wait_ns{0}, g_sync_out_ns{0};
+/* Most recent dispatch only. Plain (non-atomic) because dispatches are issued by
+ * one owner thread; the NPU is single-tenant and serialized behind g_mu. */
+uint64_t g_last_submit_ns = 0, g_last_wait_ns = 0, g_last_sync_out_ns = 0;
 
 /* One xrt::device per process: device open measured 12.3 ms, and XRT does not
  * appreciate repeated opens. */
@@ -105,8 +108,9 @@ void Program::submit_async(const Weights &w, int c_slot) {
                            p_->bo_a, w.p_->bo,
                            (c_slot & 1) ? p_->bo_c2 : p_->bo_c);
     p_->pending_slot = c_slot & 1;
-    g_submit_ns.fetch_add((uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::steady_clock::now() - p_->pending_t0).count(), std::memory_order_relaxed);
+    g_last_submit_ns = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - p_->pending_t0).count();
+    g_submit_ns.fetch_add(g_last_submit_ns, std::memory_order_relaxed);
 }
 
 void Program::wait_pending() {
@@ -123,6 +127,8 @@ void Program::wait_pending() {
 
     g_wait_ns    .fetch_add((uint64_t)std::chrono::duration_cast<nsec>(t3-t2).count(), std::memory_order_relaxed);
     g_sync_out_ns.fetch_add((uint64_t)std::chrono::duration_cast<nsec>(t4-t3).count(), std::memory_order_relaxed);
+    g_last_wait_ns     = (uint64_t)std::chrono::duration_cast<nsec>(t3-t2).count();
+    g_last_sync_out_ns = (uint64_t)std::chrono::duration_cast<nsec>(t4-t3).count();
     g_dispatches .fetch_add(1, std::memory_order_relaxed);
     g_dispatch_ns.fetch_add((uint64_t)std::chrono::duration_cast<nsec>(t4 - p_->pending_t0).count(),
                             std::memory_order_relaxed);
@@ -177,6 +183,9 @@ void Program::run_mapped_presynced(const Weights &w) {
     g_submit_ns  .fetch_add((uint64_t)std::chrono::duration_cast<nsec>(t2-t1).count(), std::memory_order_relaxed);
     g_wait_ns    .fetch_add((uint64_t)std::chrono::duration_cast<nsec>(t3-t2).count(), std::memory_order_relaxed);
     g_sync_out_ns.fetch_add((uint64_t)std::chrono::duration_cast<nsec>(t4-t3).count(), std::memory_order_relaxed);
+    g_last_submit_ns   = (uint64_t)std::chrono::duration_cast<nsec>(t2-t1).count();
+    g_last_wait_ns     = (uint64_t)std::chrono::duration_cast<nsec>(t3-t2).count();
+    g_last_sync_out_ns = (uint64_t)std::chrono::duration_cast<nsec>(t4-t3).count();
 
     const auto ns = std::chrono::duration_cast<nsec>(t4 - t0).count();
     g_dispatches.fetch_add(1, std::memory_order_relaxed);
@@ -203,6 +212,12 @@ void Program::breakdown_ms(double *sync_in, double *submit, double *wait, double
     *submit   = g_submit_ns.load()   / 1e6;
     *wait     = g_wait_ns.load()     / 1e6;
     *sync_out = g_sync_out_ns.load() / 1e6;
+}
+
+void Program::last_breakdown_ms(double *submit, double *wait, double *sync_out) {
+    if (submit)   *submit   = g_last_submit_ns   / 1e6;
+    if (wait)     *wait     = g_last_wait_ns     / 1e6;
+    if (sync_out) *sync_out = g_last_sync_out_ns / 1e6;
 }
 
 bool device_available() {
