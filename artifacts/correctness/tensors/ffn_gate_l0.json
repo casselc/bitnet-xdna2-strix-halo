@@ -1,0 +1,9 @@
+{
+  "tensor": "blk.0.ffn_gate.weight",
+  "K": 2560,
+  "N": 6912,
+  "ggml_type": 36,
+  "packed_bytes": 4423680,
+  "scale": 1.5512433052062988,
+  "file_offset": 669483680
+}

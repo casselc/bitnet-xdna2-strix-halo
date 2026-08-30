@@ -126,6 +126,7 @@ int64_t g_min_tokens = 1024;
  * The balance point is therefore near 0.5, and the real constraint is tile
  * granularity, not the ratio. Overridden by BITNET_XDNA_SPLIT. */
 double g_split_frac = 0.5;
+long g_force_tiles = -1;   /* BITNET_XDNA_TILES: exact NPU tile count, -1 = auto */
 
 bool env_truthy(const char *name) {
     const char *v = std::getenv(name);
@@ -270,6 +271,9 @@ int bitnet_xdna_available(void) {
     g_state = 0;
     if (!env_truthy("BITNET_XDNA")) { g_state_fast.store(0, std::memory_order_release); return 0; }
     if (env_truthy("BITNET_XDNA_STATS")) std::atexit(print_stats_atexit);
+    if (const char *ft = std::getenv("BITNET_XDNA_TILES")) {
+        g_force_tiles = std::strtol(ft, nullptr, 10);
+    }
     if (const char *sp = std::getenv("BITNET_XDNA_SPLIT")) {
         const double v = std::strtod(sp, nullptr);
         if (v >= 0.0 && v <= 1.0) g_split_frac = v;
@@ -293,6 +297,15 @@ int bitnet_xdna_worth_it(int64_t n_tokens) { return n_tokens >= g_min_tokens; }
 
 int64_t bitnet_xdna_token_split(int64_t n_tokens) {
     if (n_tokens <= 0) return 0;
+    /* Benchmarking override: give the NPU exactly this many whole tiles. The
+     * fraction knob rounds, so several distinct fractions collapse onto the same
+     * partition and a sweep over them measures the same configuration repeatedly.
+     * -1 = use the fraction. */
+    if (g_force_tiles >= 0) {
+        int64_t t = g_force_tiles * kMTile;
+        if (t > n_tokens) t = n_tokens;
+        return t;
+    }
     /* Below one tile there is nothing to divide: the NPU would pad either way,
      * so give it the whole batch rather than paying a dispatch for a fraction. */
     if (n_tokens <= kMTile) return n_tokens;
@@ -338,34 +351,40 @@ int bitnet_xdna_accumulate(const void *src0_i2s, int64_t K, int64_t N,
         int8_t *a_bo = prog->a_map();
         const int32_t *c_bo = prog->c_map();
 
-        // Only needed when K is chunked: partial sums accumulate here before
-        // being written out once.
+        // K-chunk partial sums, when K exceeds one chunk. Sized for the whole N
+        // so the K loop can be OUTSIDE the N loop (see below).
         std::vector<int32_t> part;
-        if (plan.k_chunks > 1) part.resize((size_t)(kMTile * kNChunk));
+        if (plan.k_chunks > 1) part.resize((size_t)(kMTile * N));
 
         for (int64_t t0 = 0; t0 < T; t0 += kMTile) {
             const int64_t rows = std::min<int64_t>(kMTile, T - t0);
+            if (plan.k_chunks > 1) std::fill(part.begin(), part.end(), 0);
 
-            for (int nc = 0; nc < plan.n_chunks; ++nc) {
-                const int64_t n_off  = (int64_t)nc * kNChunk;
-                const int64_t n_keep = std::min(kNChunk, N - n_off);   // ignore padding
-                if (plan.k_chunks > 1) std::fill(part.begin(), part.end(), 0);
+            // K OUTSIDE N. Every N-chunk of a given K-slice consumes the SAME
+            // activations, so with N outer the identical slice was copied into
+            // the mapped buffer and flushed once per N-chunk. For the two
+            // 2560x6912 tensors that was 2 redundant copies each, ~608 MB of
+            // memcpy+CLFLUSH per 2048-token prefill (36% of all A traffic).
+            for (int kc = 0; kc < plan.k_chunks; ++kc) {
+                const int64_t k_off  = (int64_t)kc * kKChunk;
+                const int64_t k_keep = std::min(kKChunk, K - k_off);
 
-                for (int kc = 0; kc < plan.k_chunks; ++kc) {
-                    const int64_t k_off  = (int64_t)kc * kKChunk;
-                    const int64_t k_keep = std::min(kKChunk, K - k_off);
+                if (rows < kMTile || k_keep < kKChunk)
+                    std::memset(a_bo, 0, (size_t)(kMTile * kKChunk));
+                for (int64_t r = 0; r < rows; ++r)
+                    std::memcpy(a_bo + r * kKChunk,
+                                a_q + (size_t)(t0 + r) * a_row_stride + k_off,
+                                (size_t)k_keep);
+                prog->sync_a();                     // once per K slice, not per N chunk
 
-                    // Activations for this K slice, zero-padded in both
-                    // directions so the fixed-size kernel sees defined input.
-                    if (rows < kMTile || k_keep < kKChunk)
-                        std::memset(a_bo, 0, (size_t)(kMTile * kKChunk));
-                    for (int64_t r = 0; r < rows; ++r)
-                        std::memcpy(a_bo + r * kKChunk,
-                                    a_q + (size_t)(t0 + r) * a_row_stride + k_off,
-                                    (size_t)k_keep);
+                for (int nc = 0; nc < plan.n_chunks; ++nc) {
+                    const int64_t n_off  = (int64_t)nc * kNChunk;
+                    const int64_t n_keep = std::min(kNChunk, N - n_off);
 
                     const auto d0 = std::chrono::steady_clock::now();
-                    prog->run_mapped(*res->chunks[(size_t)nc * plan.k_chunks + kc]);
+                    prog->run_mapped_presynced(
+                        *res->chunks[(size_t)nc * plan.k_chunks + kc]);
+
                     {   // per-shape accounting, keyed on the LOGICAL tensor shape
                         const auto dns = std::chrono::duration_cast<std::chrono::nanoseconds>(
                                              std::chrono::steady_clock::now() - d0).count();
@@ -382,21 +401,21 @@ int bitnet_xdna_accumulate(const void *src0_i2s, int64_t K, int64_t N,
                             std::memcpy(g_acc.data() + (t0 + r) * N + n_off,
                                         c_bo + r * kNChunk, (size_t)(n_keep * 4));
                     } else {
-                        // Summing partial products over K is exact in int32:
+                        // Summing partials over K is exact in int32:
                         // |sum| <= K * 127 * 1 fits comfortably.
                         for (int64_t r = 0; r < rows; ++r) {
-                            int32_t *pr = part.data() + r * kNChunk;
+                            int32_t *pr = part.data() + r * N + n_off;
                             const int32_t *cr = c_bo + r * kNChunk;
                             for (int64_t j2 = 0; j2 < n_keep; ++j2) pr[j2] += cr[j2];
                         }
                     }
                 }
-
-                if (plan.k_chunks > 1)
-                    for (int64_t r = 0; r < rows; ++r)
-                        std::memcpy(g_acc.data() + (t0 + r) * N + n_off,
-                                    part.data() + r * kNChunk, (size_t)(n_keep * 4));
             }
+
+            if (plan.k_chunks > 1)
+                for (int64_t r = 0; r < rows; ++r)
+                    std::memcpy(g_acc.data() + (t0 + r) * N,
+                                part.data() + r * N, (size_t)(N * 4));
         }
         return 1;
     } catch (...) { return 0; }

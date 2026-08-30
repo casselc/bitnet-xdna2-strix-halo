@@ -1,0 +1,9 @@
+{
+  "tensor": "blk.0.ffn_down.weight",
+  "K": 6912,
+  "N": 2560,
+  "ggml_type": 36,
+  "packed_bytes": 4423680,
+  "scale": 2.163161277770996,
+  "file_offset": 665032320
+}

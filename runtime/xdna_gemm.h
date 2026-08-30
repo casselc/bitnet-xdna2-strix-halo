@@ -50,8 +50,16 @@ public:
     int8_t  *a_map();
     int32_t *c_map();
 
-    /* Dispatch using whatever is currently in a_map(); result lands in c_map(). */
+    /* Dispatch using whatever is currently in a_map(); result lands in c_map().
+     * Syncs the activation buffer to the device first. */
     void run_mapped(const Weights &w);
+
+    /* Split form, for reusing one activation slice across several weight chunks.
+     * A wide-N tensor is served by several N-chunks that all consume the SAME
+     * activation K-slice; calling run_mapped for each re-flushes an unchanged
+     * buffer. sync_a() once, then dispatch each chunk. */
+    void sync_a();
+    void run_mapped_presynced(const Weights &w);
 
     /* Convenience wrapper that copies through (used by tests). */
     void run(const Weights &w, const int8_t *a, int32_t *c);

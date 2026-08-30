@@ -100,12 +100,23 @@ std::unique_ptr<Weights> Program::upload(const int8_t *b_kn) {
 int8_t  *Program::a_map() { return p_->bo_a.map<int8_t *>(); }
 int32_t *Program::c_map() { return p_->bo_c.map<int32_t *>(); }
 
-void Program::run_mapped(const Weights &w) {
-    using nsec = std::chrono::nanoseconds;
+void Program::sync_a() {
     const auto t0 = std::chrono::steady_clock::now();
-
     p_->bo_a.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+    g_sync_in_ns.fetch_add((uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+                               std::chrono::steady_clock::now() - t0).count(),
+                           std::memory_order_relaxed);
+}
+
+void Program::run_mapped(const Weights &w) {
+    sync_a();
+    run_mapped_presynced(w);
+}
+
+void Program::run_mapped_presynced(const Weights &w) {
+    using nsec = std::chrono::nanoseconds;
     const auto t1 = std::chrono::steady_clock::now();
+    const auto t0 = t1;
 
     auto run = p_->kern(3, p_->bo_insts, (uint32_t)p_->insts_bytes,
                         p_->bo_a, w.p_->bo, p_->bo_c);
@@ -120,7 +131,6 @@ void Program::run_mapped(const Weights &w) {
     p_->bo_c.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
     const auto t4 = std::chrono::steady_clock::now();
 
-    g_sync_in_ns .fetch_add((uint64_t)std::chrono::duration_cast<nsec>(t1-t0).count(), std::memory_order_relaxed);
     g_submit_ns  .fetch_add((uint64_t)std::chrono::duration_cast<nsec>(t2-t1).count(), std::memory_order_relaxed);
     g_wait_ns    .fetch_add((uint64_t)std::chrono::duration_cast<nsec>(t3-t2).count(), std::memory_order_relaxed);
     g_sync_out_ns.fetch_add((uint64_t)std::chrono::duration_cast<nsec>(t4-t3).count(), std::memory_order_relaxed);
