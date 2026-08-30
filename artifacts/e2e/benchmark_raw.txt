@@ -1,0 +1,21 @@
+### CPU-only (BITNET_XDNA=0)
+| ------------------------------ | ---------: | ---------: | ---------- | ------: | --------------: | -------------------: |
+| bitnet-b1.58 2B Q1_0           |   1.10 GiB |     2.41 B | CPU        |      16 |           pp128 |       864.01 ± 73.10 |
+| bitnet-b1.58 2B Q1_0           |   1.10 GiB |     2.41 B | CPU        |      16 |           pp512 |       1255.10 ± 3.02 |
+| bitnet-b1.58 2B Q1_0           |   1.10 GiB |     2.41 B | CPU        |      16 |          pp2048 |       1019.16 ± 1.19 |
+| bitnet-b1.58 2B Q1_0           |   1.10 GiB |     2.41 B | CPU        |      16 |          pp3968 |       799.06 ± 15.47 |
+| bitnet-b1.58 2B Q1_0           |   1.10 GiB |     2.41 B | CPU        |      16 |            tg32 |         79.76 ± 0.01 |
+
+build: 390c30775 (9918)
+
+### HYBRID (BITNET_XDNA=1)
+| bitnet-b1.58 2B Q1_0           |   1.10 GiB |     2.41 B | CPU        |      16 |           pp128 |        213.09 ± 0.60 |
+| bitnet-b1.58 2B Q1_0           |   1.10 GiB |     2.41 B | CPU        |      16 |           pp512 |        642.43 ± 0.12 |
+| bitnet-b1.58 2B Q1_0           |   1.10 GiB |     2.41 B | CPU        |      16 |          pp2048 |        571.01 ± 1.13 |
+| bitnet-b1.58 2B Q1_0           |   1.10 GiB |     2.41 B | CPU        |      16 |          pp3968 |        484.34 ± 1.87 |
+| bitnet-b1.58 2B Q1_0           |   1.10 GiB |     2.41 B | CPU        |      16 |            tg32 |         80.22 ± 0.26 |
+
+[bitnet-xdna] dispatches=8610  dispatch_total=22925.2 ms  mean=2.663 ms
+[bitnet-xdna] weight repack+upload=2669.0 ms  resident int8 weights=1843.1 MiB
+
+build: 390c30775 (9918)

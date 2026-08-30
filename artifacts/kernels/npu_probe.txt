@@ -1,0 +1,28 @@
+npu_probe
+
+  device open (one-time)                   11.483 ms
+  device                                 RyzenAI-npu5 / 0000:c7:00.1
+
+  --- activations 512x2560 int8 (1.25 MiB)
+  bo alloc + map                         mean    0.157 ms   p50    0.154   min    0.151   max    0.217
+  sync TO_DEVICE                         mean    0.030 ms   p50    0.029   min    0.027   max    0.034     44.45 GB/s
+  sync FROM_DEVICE                       mean    0.011 ms   p50    0.011   min    0.010   max    0.014    124.47 GB/s
+
+  --- weights 2560x2560 int8 (6.25 MiB)
+  bo alloc + map                         mean    0.727 ms   p50    0.715   min    0.697   max    0.935
+  sync TO_DEVICE                         mean    0.114 ms   p50    0.114   min    0.108   max    0.120     57.55 GB/s
+  sync FROM_DEVICE                       mean    0.054 ms   p50    0.052   min    0.052   max    0.084    124.87 GB/s
+
+  --- output 512x2560 int32 (5.00 MiB)
+  bo alloc + map                         mean    0.578 ms   p50    0.569   min    0.558   max    0.758
+  sync TO_DEVICE                         mean    0.092 ms   p50    0.092   min    0.082   max    0.096     57.03 GB/s
+  sync FROM_DEVICE                       mean    0.042 ms   p50    0.041   min    0.041   max    0.050    126.58 GB/s
+
+  --- weights 2560x6912 int8 (16.88 MiB)
+  bo alloc + map                         mean    1.904 ms   p50    1.907   min    1.821   max    2.341
+  sync TO_DEVICE                         mean    0.241 ms   p50    0.250   min    0.188   max    0.268     70.65 GB/s
+  sync FROM_DEVICE                       mean    0.142 ms   p50    0.141   min    0.139   max    0.147    125.35 GB/s
+
+note: sync cost here is the host-side cache operation only.
+      Kernel dispatch latency is measured separately in
+      npu_dispatch_bench once an xclbin exists.

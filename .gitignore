@@ -1,0 +1,23 @@
+# Toolchain and dependencies -- reconstructed by artifacts/reproduce.md
+.venv/
+.localdeps/
+
+# Upstream sources: refs/BitNet is a pinned checkout (see artifacts/coordinates.edn).
+# Our changes to it live in patches/, so the tree itself is not vendored.
+refs/
+
+# Model weights (1.1 GiB), downloaded from HuggingFace by reproduce.md step 1
+models/
+
+# Build outputs
+build/
+
+# mlir-aie per-design build intermediates (1.3 MiB each); the .xclbin and
+# .insts.bin next to them ARE checked in -- they are the deliverable.
+artifacts/xclbin/*.prj/
+
+# Extracted model weight slices used by tests. Regenerate with:
+#   .venv/bin/python tools/gguf_extract.py \
+#       models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf \
+#       blk.0.attn_q.weight artifacts/correctness/tensors/attn_q_l0
+artifacts/correctness/tensors/*.packed

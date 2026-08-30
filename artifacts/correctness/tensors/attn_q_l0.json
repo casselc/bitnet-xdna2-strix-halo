@@ -1,0 +1,9 @@
+{
+  "tensor": "blk.0.attn_q.weight",
+  "K": 2560,
+  "N": 2560,
+  "ggml_type": 36,
+  "packed_bytes": 1638400,
+  "scale": 1.2188547849655151,
+  "file_offset": 680399648
+}

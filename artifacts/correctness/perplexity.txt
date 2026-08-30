@@ -1,0 +1,7 @@
+--- BITNET_XDNA=0
+[1]364.9199,[2]312.3577,[3]288.2628,[4]307.5806,
+0.03.243.536 I Final estimate: PPL = 307.5806 +/- 27.85495
+--- BITNET_XDNA=1
+[1]364.9199,[2]312.3577,[3]288.2628,[4]307.5806,
+0.07.587.822 I Final estimate: PPL = 307.5806 +/- 27.85495
+[bitnet-xdna] dispatches=830  dispatch_total=2271.5 ms  mean=2.737 ms

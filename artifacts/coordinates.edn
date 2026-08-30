@@ -1,0 +1,92 @@
+;; Pinned coordinates for the Strix Halo / XDNA2 BitNet hybrid MVP.
+;; Every value here was verified on the target machine or against an upstream API;
+;; nothing is copied from documentation without a check.
+{:milestone   "xdna2-bitnet-hybrid-prefill-mvp"
+ :captured-at "2026-08-30"
+ :host        "marvin"
+
+ :hardware
+ {:cpu        "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S"
+  :cpu-cores  16
+  :cpu-threads 32
+  :ram-gib    122
+  :npu        {:pci-id "1022:17f0" :revision "0x11" :bdf "0000:c7:00.1"
+               :xrt-name "RyzenAI-npu5" :arch "aie2p" :topology "6x8"
+               :total-columns 8 :compute-cores 32}
+  :gpu        {:pci-id "1002:1586" :name "Radeon 8060S" :used? false}}
+
+ :os
+ {:distro "Ubuntu 26.04 LTS (resolute)"
+  :kernel "7.0.0-29-generic"
+  :glibc  "2.43"
+  ;; kernel >= 7.0 is REQUIRED: commit f1eac46fe5f7 ("accel/amdxdna: Update
+  ;; firmware version check for latest firmware") landed in 7.0-rc1. Before it,
+  ;; the in-tree driver hardcoded protocol_major 0x6 and rejected fw 1.1.2.65
+  ;; (protocol 7.2) with "aie2_check_protocol: Incompatible firmware protocol".
+  :kernel-requirement ">=7.0 for fw protocol major 7"}
+
+ :npu-stack
+ {:driver           {:name "amdxdna" :in-tree? true :dkms-needed? false}
+  :firmware         "1.1.2.65"
+  :firmware-path    "/lib/firmware/amdnpu/17f0_11/npu.sbin.1.1.2.65.zst"
+  :xrt              "1:2.25.0-4~resolute1"
+  :xrt-source       "ppa:lemonade-team/stable (resolute)"
+  :device-node      "/dev/accel/accel0"
+  :memlock-required "unlimited (XRT mmaps 64 MiB locked; 8 MiB default -> EAGAIN)"}
+
+ :bitnet
+ {:repo   "https://github.com/microsoft/BitNet"
+  :commit "0b341e582afbf9e1011f24744b554c96a3477eb5"
+  :llama-cpp {:repo   "https://github.com/isHuangXin/llama.cpp"
+              :branch "release-bitnet-embedding-0.6b-270m"
+              :commit "390c307752ab78fd8189f359d6954c9ba1be74af"}
+  :quant  :i2_s
+  :ggml-type-i2s 36
+  ;; ACT_PARALLEL is defined by default in include/gemm-config.h and SELECTS THE
+  ;; ON-DISK PACKING LAYOUT. Do not flip it: the prebuilt GGUF and the Python
+  ;; converter both assume the ACT_PARALLEL (128-weights -> 32-byte, group-of-32
+  ;; interleaved) layout.
+  :act-parallel true
+  ;; GGML_LLAMAFILE must be OFF or llamafile_sgemm_i2s preempts the dispatch
+  ;; site we hook and the NPU path silently never runs.
+  :ggml-llamafile false}
+
+ :model
+ {:name       "BitNet-b1.58-2B-4T"
+  :weights    {:hf-repo "microsoft/BitNet-b1.58-2B-4T"
+               :sha     "04c3b9ad9361b824064a1f25ea60a8be9599b127"}
+  :gguf       {:hf-repo "microsoft/BitNet-b1.58-2B-4T-gguf"
+               :sha     "a1f2f1c765812aa8af3f6eda4a313707064bba15"
+               :file    "ggml-model-i2_s.gguf"
+               :bytes   1187801280}
+  :arch       "bitnet-b1.58"
+  :config     {:hidden-size 2560 :intermediate-size 6912 :num-layers 30
+               :num-attention-heads 20 :num-kv-heads 5 :head-dim 128
+               :vocab-size 128256 :max-position-embeddings 4096
+               :rope-theta 500000.0 :rms-norm-eps 1e-05
+               :hidden-act "relu2" :tie-word-embeddings true
+               :bos-token-id 128000 :eos-token-id 128001}
+  ;; ggml dims are [ne0=K, ne1=N]. q/k/v are SEPARATE tensors in the GGUF
+  ;; (the CUDA reference fuses them; the GGUF does not).
+  :i2s-linear-shapes
+  [{:tensor "attn_q"      :k 2560 :n 2560 :per-layer 1}
+   {:tensor "attn_k"      :k 2560 :n 640  :per-layer 1}
+   {:tensor "attn_v"      :k 2560 :n 640  :per-layer 1}
+   {:tensor "attn_output" :k 2560 :n 2560 :per-layer 1}
+   {:tensor "ffn_gate"    :k 2560 :n 6912 :per-layer 1}
+   {:tensor "ffn_up"      :k 2560 :n 6912 :per-layer 1}
+   {:tensor "ffn_down"    :k 6912 :n 2560 :per-layer 1}]
+  :i2s-matmuls-per-layer 7
+  :i2s-matmuls-per-prefill 210
+  ;; token_embd is f16 and tie_word_embeddings=true, so the lm_head is an f16
+  ;; [2560,128256] matmul that stays on CPU and is NOT part of the offload.
+  :lm-head {:tensor "token_embd" :type "f16" :k 2560 :n 128256 :on-npu? false}}
+
+ :npu-toolchain
+ {:mlir-aie {:repo "https://github.com/Xilinx/mlir-aie"
+             :release "v1.4.2" :published "2026-08-22"
+             :wheel "mlir_aie-1.4.2-cp314-cp314-manylinux_2_35_x86_64.whl"
+             :device-target "npu2"}
+  :peano    {:package "llvm_aie" :version "21.0.0.2026080301+c9c5ecb7"}
+  :python   "3.14.4"
+  :runtime  "C++ XRT native API (libxrt_coreutil); mlir-aie used AOT only"}}

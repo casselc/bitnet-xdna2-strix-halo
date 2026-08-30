@@ -1,0 +1,12 @@
+device: <abc.NPU2 object at 0x743c7a25fe00>
+first call (includes compile): 166.5 ms
+correctness: OK (4096 int32 elements)
+
+warm round trip (host -> NPU -> host), 200 iterations:
+  mean      0.199 ms
+  p50       0.200 ms
+  p90       0.205 ms
+  min       0.191 ms
+  max       0.218 ms
+
+implication: 210 BitNet matmul dispatches/prefill x 0.200 ms = 41.9 ms of dispatch overhead

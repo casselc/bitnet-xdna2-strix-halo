@@ -1,0 +1,47 @@
+You are a scheduling controller. Below is the current graph state.
+Answer with the single next node id to execute and nothing else.
+
+GRAPH STATE:
+  node_00: status=ready deps=[39] cost=0 region=r0
+  node_01: status=ready deps=[00] cost=7 region=r1
+  node_02: status=ready deps=[01] cost=14 region=r2
+  node_03: status=ready deps=[02] cost=21 region=r3
+  node_04: status=ready deps=[03] cost=5 region=r0
+  node_05: status=ready deps=[04] cost=12 region=r1
+  node_06: status=ready deps=[05] cost=19 region=r2
+  node_07: status=ready deps=[06] cost=3 region=r3
+  node_08: status=ready deps=[07] cost=10 region=r0
+  node_09: status=ready deps=[08] cost=17 region=r1
+  node_10: status=ready deps=[09] cost=1 region=r2
+  node_11: status=ready deps=[10] cost=8 region=r3
+  node_12: status=ready deps=[11] cost=15 region=r0
+  node_13: status=ready deps=[12] cost=22 region=r1
+  node_14: status=ready deps=[13] cost=6 region=r2
+  node_15: status=ready deps=[14] cost=13 region=r3
+  node_16: status=ready deps=[15] cost=20 region=r0
+  node_17: status=ready deps=[16] cost=4 region=r1
+  node_18: status=ready deps=[17] cost=11 region=r2
+  node_19: status=ready deps=[18] cost=18 region=r3
+  node_20: status=ready deps=[19] cost=2 region=r0
+  node_21: status=ready deps=[20] cost=9 region=r1
+  node_22: status=ready deps=[21] cost=16 region=r2
+  node_23: status=ready deps=[22] cost=0 region=r3
+  node_24: status=ready deps=[23] cost=7 region=r0
+  node_25: status=ready deps=[24] cost=14 region=r1
+  node_26: status=ready deps=[25] cost=21 region=r2
+  node_27: status=ready deps=[26] cost=5 region=r3
+  node_28: status=ready deps=[27] cost=12 region=r0
+  node_29: status=ready deps=[28] cost=19 region=r1
+  node_30: status=ready deps=[29] cost=3 region=r2
+  node_31: status=ready deps=[30] cost=10 region=r3
+  node_32: status=ready deps=[31] cost=17 region=r0
+  node_33: status=ready deps=[32] cost=1 region=r1
+  node_34: status=ready deps=[33] cost=8 region=r2
+  node_35: status=ready deps=[34] cost=15 region=r3
+  node_36: status=ready deps=[35] cost=22 region=r0
+  node_37: status=ready deps=[36] cost=6 region=r1
+  node_38: status=ready deps=[37] cost=13 region=r2
+  node_39: status=ready deps=[38] cost=20 region=r3
+
+Constraint: prefer the lowest cost node in region r0 whose deps are ready.
+Next node id:

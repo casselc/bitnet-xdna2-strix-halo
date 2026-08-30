@@ -1,0 +1,16 @@
+This project links against and builds on:
+
+  microsoft/BitNet            MIT           @ 0b341e582afbf9e1011f24744b554c96a3477eb5
+  isHuangXin/llama.cpp        MIT           @ 390c307752ab78fd8189f359d6954c9ba1be74af
+  Xilinx/mlir-aie             Apache-2.0    @ v1.4.2
+  Xilinx/llvm-aie (Peano)     Apache-2.0    @ 21.0.0.2026080301+c9c5ecb7
+
+Neither is vendored here except for one file:
+
+  npu/ref/whole_array.py      Apache-2.0 WITH LLVM-exception
+      Copied verbatim from Xilinx/mlir-aie@v1.4.2,
+      programming_examples/basic/matrix_multiplication/whole_array/whole_array.py
+      It retains its original SPDX header and copyright.
+
+Our modifications to the pinned llama.cpp fork are kept as a patch in
+patches/, not as a fork, so upstream stays identifiable.

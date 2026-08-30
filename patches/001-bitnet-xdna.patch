@@ -1,0 +1,98 @@
+diff --git a/ggml/src/ggml-cpu/CMakeLists.txt b/ggml/src/ggml-cpu/CMakeLists.txt
+index fd5ba9989..87f21c7d3 100644
+--- a/ggml/src/ggml-cpu/CMakeLists.txt
++++ b/ggml/src/ggml-cpu/CMakeLists.txt
+@@ -59,6 +59,21 @@ function(ggml_add_cpu_backend_variant_impl tag_name)
+     target_compile_features(${GGML_CPU_NAME} PRIVATE c_std_11 cxx_std_17)
+     target_include_directories(${GGML_CPU_NAME} PRIVATE . ggml-cpu ../../../../include)
+ 
++    # Experimental XDNA2 (Ryzen AI NPU) offload for I2_S prefill GEMMs.
++    # Opt-in at build time and again at runtime (BITNET_XDNA=1), so a build with
++    # this on still produces a CPU-only-capable binary.
++    if (BITNET_XDNA_RUNTIME_DIR)
++        message(STATUS "BitNet XDNA2 offload enabled: ${BITNET_XDNA_RUNTIME_DIR}")
++        target_sources(${GGML_CPU_NAME} PRIVATE
++            ${BITNET_XDNA_RUNTIME_DIR}/bitnet_xdna.cpp
++            ${BITNET_XDNA_RUNTIME_DIR}/xdna_gemm.cpp
++            ${BITNET_XDNA_RUNTIME_DIR}/bitnet_i2s.c)
++        target_include_directories(${GGML_CPU_NAME} PRIVATE
++            ${BITNET_XDNA_RUNTIME_DIR} ${BITNET_XDNA_XRT_INCLUDE})
++        target_compile_definitions(${GGML_CPU_NAME} PRIVATE GGML_BITNET_XDNA)
++        target_link_libraries(${GGML_CPU_NAME} PRIVATE xrt_coreutil)
++    endif()
++
+     if (APPLE AND GGML_ACCELERATE)
+         find_library(ACCELERATE_FRAMEWORK Accelerate)
+         if (ACCELERATE_FRAMEWORK)
+diff --git a/ggml/src/ggml-cpu/ggml-cpu.c b/ggml/src/ggml-cpu/ggml-cpu.c
+index ec88ef29a..1bac7127e 100644
+--- a/ggml/src/ggml-cpu/ggml-cpu.c
++++ b/ggml/src/ggml-cpu/ggml-cpu.c
+@@ -56,6 +56,13 @@
+ #include "ggml-bitnet.h"
+ #endif
+ 
++// Must sit outside the TL1/TL2 guard: the XDNA2 offload targets the I2_S path,
++// which is live in the default build where both TL options are OFF.
++#ifdef GGML_BITNET_XDNA
++#include "bitnet_xdna.h"
++#include <stdatomic.h>
++#endif
++
+ #ifdef GGML_USE_CPU_RISCV64_SPACEMIT
+ #    include "spacemit/ime.h"
+ #endif
+@@ -1492,7 +1499,52 @@ UseGgmlGemm2:;
+     if (src0->type == GGML_TYPE_I2_S && ggml_n_dims(src0) == 2) {
+         const void * src1_wdata = (src1->type == vec_dot_type) ? src1->data : params->wdata;
+         const size_t i2s_row_size = ggml_row_size(vec_dot_type, ne10);
+-        const size_t src1_col_stride = src1_cont || src1->type != vec_dot_type ? i2s_row_size : nb11;
++        // src1_cont is only declared inside the GGML_USE_LLAMAFILE block above,
++        // so this path did not compile with -DGGML_LLAMAFILE=OFF. Recompute it
++        // locally; ggml_is_contiguous is cheap and the value is identical.
++        const bool i2s_src1_cont = ggml_is_contiguous(src1);
++        const size_t src1_col_stride = i2s_src1_cont || src1->type != vec_dot_type ? i2s_row_size : nb11;
++
++#ifdef GGML_BITNET_XDNA
++        // NPU-assisted prefill. Deliberately placed BEFORE the per-thread row
++        // split below: the CPU path shards ne01 across threads and calls
++        // ggml_gemm_i2_i8_s with only 4 tokens at a time, which would mean one
++        // NPU dispatch per 4 tokens per layer. One dispatch must see the whole
++        // ne11-token batch, so thread 0 does the work and the rest wait.
++        //
++        // Decode (ne11 small) never qualifies and is untouched, which is what
++        // keeps CPU decode semantics identical to the CPU-only build.
++        if (bitnet_xdna_available() &&
++            bitnet_xdna_worth_it(ne11) &&
++            bitnet_xdna_supports(ne00, ne01)) {
++            // Thread 0 owns the device (the NPU is single-tenant and hardware
++            // contexts time-slice the whole array), but the f32 epilogue is
++            // ne11*ne01 elements of pure bandwidth -- leaving 15 threads
++            // spinning through it costs more than the kernel it follows. So:
++            // accumulate on thread 0, then everyone converts a row slice.
++            static _Atomic int xdna_result;
++            if (ith == 0) {
++                atomic_store(&xdna_result,
++                             bitnet_xdna_accumulate(src0->data, ne00, ne01,
++                                                    (const int8_t *)src1_wdata,
++                                                    ne11, src1_col_stride));
++            }
++            ggml_barrier(params->threadpool);
++
++            if (atomic_load(&xdna_result)) {
++                const float * xs  = (const float *)((const char *)src1_wdata + (ne11 * ne10));
++                const float   xws = *(const float *)((const uint8_t *)src0->data + (ne00 * ne01 / 4));
++                const int64_t rb  = (ith       * ne11) / nth;
++                const int64_t re  = ((ith + 1) * ne11) / nth;
++                bitnet_xdna_epilogue(ne01, rb, re, xs, xws, (float *)dst->data, nb1);
++                // Barrier before returning: the accumulator buffer is shared and
++                // the next mul_mat's thread 0 must not start overwriting it while
++                // a straggler is still reading.
++                ggml_barrier(params->threadpool);
++                return;
++            }
++        }
++#endif
+ 
+         const int64_t matmul_num_cols = 4; // gemm processes 4 columns at a time
+         int64_t src0_start = (ith * ne01) / nth;
