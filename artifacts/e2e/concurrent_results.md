@@ -3,9 +3,12 @@
 ## The change
 
 Offload was **exclusive**: thread 0 drove the NPU while 15 CPU cores idled on a
-barrier for ~76% of the prefill. The NPU was already the faster engine for this
-arithmetic (777 ms against the CPU's 2009 ms for a whole 2048-token prefill), but
-replacing a 1.0x engine with a 0.6x-of-total one is still a loss.
+barrier for roughly half the prefill. **The two engines are comparable on this
+arithmetic** -- an earlier version of this file claimed the NPU was clearly faster,
+citing 777 ms against the CPU's 2009 ms; that 777 ms was wrong by 2x (see
+`tuned_results.md`), and the corrected figure is ~1555 ms, i.e. a ~48/52 split.
+Concurrency wins not because one engine is faster but because **two comparable
+engines run at once instead of one**.
 
 Now the token batch is split: **thread 0 drives the NPU over tokens `[0, t_npu)`
 while threads 1..nth-1 compute `[t_npu, ne11)` on the CPU**, simultaneously. One

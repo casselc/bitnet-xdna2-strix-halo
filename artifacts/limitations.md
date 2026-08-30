@@ -22,7 +22,7 @@
 
 - Round 1: the hybrid was slower than CPU-only at every prompt length (0.27x at
   128 tokens, 0.66–0.75x at 512–3968).
-- The stock mlir-aie `whole_array` kernel reaches ~9.3 TOPS against a ~50 TOPS
+- The stock mlir-aie `whole_array` kernel reaches ~9.3 TOPS against a ~50 TOPS (marketing; see note below)
   device peak (~19%). Published hand-tuned XDNA2 int8 GEMM reaches 38–56 TOPS, so
   roughly 4–6x of kernel headroom is untouched. No custom AIE kernel was written.
 - Weights are expanded ternary → int8, a **4x inflation**: 1843 MiB resident
@@ -86,3 +86,10 @@
   Where we measured the same quantity here, Strix Halo was substantially better
   (0.197 ms dispatch, 0.101–0.22 ms switch), so those references should be treated
   as weak priors only.
+
+**Reference-target correction.** The "~50 TOPS peak" used in earlier framing is the
+device's *marketing* int8 figure and is the wrong yardstick for this path. Published
+XDNA2 GEMM results are precision-specific: 38.05 TOPS is **int8 -> int8** output, and
+the apples-to-apples **int8 -> int32** result (which is what BitNet needs, because the
+accumulator must not saturate) is **25.31 TOPS** with a 96x64x96 tile. Our 13.17 TOPS
+should be read against ~25, i.e. roughly 2x of headroom, not 4-6x.

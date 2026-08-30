@@ -48,7 +48,7 @@ time-to-first-token rather than saving it.
 
 | | |
 |---|---|
-| stock mlir-aie `whole_array` int8 kernel | **9.3 TOPS** of a ~50 TOPS device peak (~19%) |
+| stock mlir-aie `whole_array` int8 kernel | **9.3 TOPS**; see the reference-target note below -- the right comparison is ~25 TOPS (int8->int32), not ~50 |
 | published hand-tuned XDNA2 int8 GEMM | 38–56 TOPS → **4–6x headroom untouched** |
 | CPU effective throughput on the same arithmetic | 4.29 TFLOPS |
 | kernel time alone, weighted over BitNet's 7 linears | 1.52 ms |
@@ -145,3 +145,10 @@ kernel at 19% of device peak does not beat them. Whether the NPU earns its place
 as the resident controller depends entirely on closing the 4–6x kernel gap, which
 published results say is achievable but which nobody has yet done for ternary
 weights on this silicon.
+
+**Reference-target correction.** The "~50 TOPS peak" used in earlier framing is the
+device's *marketing* int8 figure and is the wrong yardstick for this path. Published
+XDNA2 GEMM results are precision-specific: 38.05 TOPS is **int8 -> int8** output, and
+the apples-to-apples **int8 -> int32** result (which is what BitNet needs, because the
+accumulator must not saturate) is **25.31 TOPS** with a 96x64x96 tile. Our 13.17 TOPS
+should be read against ~25, i.e. roughly 2x of headroom, not 4-6x.

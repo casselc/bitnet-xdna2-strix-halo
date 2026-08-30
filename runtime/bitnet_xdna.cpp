@@ -120,10 +120,11 @@ std::atomic<int> g_state_fast{-1};   // lock-free mirror of g_state
  * leaving the batch on the CPU (728 vs 1241 t/s at pp512). Offload only when the
  * batch can fill a tile. */
 int64_t g_min_tokens = 1024;
-/* Fraction of the token batch given to the NPU. The NPU is the faster engine
- * per unit of this arithmetic (777 ms vs the CPU's 2009 ms for a whole 2048-token
- * prefill), so the balance point is above 0.5; the default is deliberately
- * conservative until measured per machine. */
+/* Fraction of the token batch given to the NPU. CPU and NPU are roughly
+ * COMPARABLE on this arithmetic -- an earlier comment here claimed the NPU was
+ * clearly faster on the strength of a device-time figure that was wrong by 2x.
+ * The balance point is therefore near 0.5, and the real constraint is tile
+ * granularity, not the ratio. Overridden by BITNET_XDNA_SPLIT. */
 double g_split_frac = 0.5;
 
 bool env_truthy(const char *name) {

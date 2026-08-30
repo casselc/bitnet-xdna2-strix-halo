@@ -81,10 +81,19 @@ decision made by measurement, as planned.
 
 ## Honest assessment
 
-The stock kernel reaches ~9.3 TOPS against a ~50 TOPS device peak (~19%).
+The stock kernel reaches ~9.3 TOPS. (Originally compared against a ~50 TOPS device
+peak; that is the marketing int8 number and the wrong yardstick -- see the
+reference-target correction at the end of this file.)
 Published hand-tuned XDNA2 int8 GEMM reaches 38-56 TOPS, so there is roughly 4-6x
 of kernel headroom left on the table. Even so, at controller-scale prompts the
 untuned NPU already does the linear algebra in 59-66% of the CPU's total prefill
 budget, which is enough for a real end-to-end win. At 512 tokens the margin is
 thin (0.86x) and at 128 tokens dispatch overhead would dominate -- the crossover
 this milestone set out to find is real and sits in the hundreds-of-tokens range.
+
+**Reference-target correction.** The "~50 TOPS peak" used in earlier framing is the
+device's *marketing* int8 figure and is the wrong yardstick for this path. Published
+XDNA2 GEMM results are precision-specific: 38.05 TOPS is **int8 -> int8** output, and
+the apples-to-apples **int8 -> int32** result (which is what BitNet needs, because the
+accumulator must not saturate) is **25.31 TOPS** with a 96x64x96 tile. Our 13.17 TOPS
+should be read against ~25, i.e. roughly 2x of headroom, not 4-6x.
