@@ -116,12 +116,17 @@ Two cheaper follow-ups worth folding in:
    `.venv/.../mlir_aie/include/aie_api/detail/aie2p/mmul_8_4.hpp:23` (arch 21)
    vs `:46` (arch 22).
 
-   So int4 plausibly buys **both** 2x compute and 2x less weight DMA, and BitNet's
-   ternary values fit int4 exactly with no accuracy loss.
-   **Remaining caveat: issue latency is not knowable from the headers.** If the
-   1024-MAC instruction issues in two cycles rather than one, the throughput is
-   unchanged and only the DMA saving is real. Settling it needs a microbenchmark
-   with a custom kernel, since IRON's `kernels.mm()` exposes no int4 combination.
+   **Measured on hardware, and the compute half is false.** A custom kernel
+   (`npu/kernels/mm_i8_i4.cc`) runs int8 x int4 bit-exactly and halves the weight
+   bytes on the wire, but a two-point solve against a matched int8 kernel gives a
+   compute-only ratio of **1.035x**: the 1024-MAC instruction issues at half the
+   rate of the 512-MAC one, so MAC throughput is unchanged. Details in
+   `kernels/int4_result.md`.
+
+   int4 is therefore a **bandwidth** optimization, not a compute one — but an
+   important one, because halving weight traffic is what makes NPU decode
+   arithmetically possible at all (28.5 -> 113.8 tok/s ceiling against the CPU's
+   80). Budget it accordingly.
 2. **Concurrent split** rather than exclusive offload: give the NPU a fraction of
    the output rows and the CPU the rest simultaneously. Today thread 0 dispatches
    while 15 threads idle on a barrier; measured NPU/CPU concurrency on Strix Halo

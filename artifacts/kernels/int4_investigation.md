@@ -1,4 +1,11 @@
-# Is int8 x int4 worth 2x on this part? Partly settled.
+# Is int8 x int4 worth 2x on this part? **Settled: no.**
+
+> **RESOLVED ON HARDWARE — see [`int4_result.md`](int4_result.md).** The kernel was
+> built, runs bit-exactly, and halves weight DMA. The 2x throughput did **not**
+> materialize: measured compute-only ratio **1.035x**. The 1024-MAC instruction
+> issues at half the rate of the 512-MAC one. The analysis below is retained
+> because its mechanism findings (native path, free hardware unpack) all held —
+> only the performance inference was wrong.
 
 This entry was wrong twice. Recording the evidence so it stops flip-flopping.
 
