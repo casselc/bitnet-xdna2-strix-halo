@@ -113,3 +113,61 @@ while N matmuls ran on the NPU" is only as strong as the coverage behind it, and
 coverage is now measured and explained rather than assumed. The runtime also now
 logs any tensor it declines to offload, with the reason, so a genuine silent
 fallback cannot hide.
+
+## A self-inflicted measurement failure, and how it was caught
+
+While setting up energy measurement, a load generator (`npu_sustained_tuned`, on a
+3600-second timer) survived the probe's cleanup and kept dispatching to the NPU.
+Every measurement taken afterwards was against an NPU shared with that process.
+
+The symptom was diagnostic once looked at properly: re-running the headline A/B
+gave **0.87x / 0.75x / 0.64x** — the hybrid apparently losing badly — but with a
+telling pattern. **CPU-only swung 764 -> 1033 t/s (35% spread) while the hybrid sat
+rock-stable at ~660.** Contamination that affected both engines would move both.
+A stable-but-depressed hybrid pointed at the NPU specifically.
+
+Confirmed by taking llama.cpp out of the picture entirely: the standalone kernel
+benchmark read **6.77 ms / 1.98 TOPS** against the 1.14 ms / 11.76 TOPS measured
+earlier — a 5.9x slowdown with no code change. Checking `/proc/*/fd` for holders of
+`/dev/accel/accel0` found the stray process. The iGPU was at 0% busy throughout, so
+the lemonade server sharing the machine was **not** the cause, despite being the
+obvious suspect.
+
+After killing it, standalone returned to **11.76-12.05 TOPS** and the A/B to:
+
+```
+pair 1:  CPU 1043.9   hybrid 1147.2   1.10x
+pair 2:  CPU 1040.0   hybrid 1146.6   1.10x
+pair 3:  CPU  748.4   hybrid 1100.2   1.47x
+```
+
+Pairs 1-2 reproduce the previously reported 1.12x. **Pair 3 is not a better result
+-- it is a contaminated one**: unrelated CPU load (`spike`, `scheme`, each ~100%)
+hit the CPU-only run. It is reported rather than dropped because discarding the
+inconvenient direction of a confound while keeping the convenient one is how
+baselines get flattered.
+
+Two things worth carrying forward:
+
+- **A stray load generator is indistinguishable from a hardware finding** unless you
+  check for other users of the device. `/proc/*/fd` inspection now precedes any
+  performance claim.
+- **Under CPU contention the hybrid degrades far less than CPU-only** (1147 -> 1100,
+  -4%, vs 1044 -> 748, -28%), because half its work is on an engine nobody else is
+  using. This is a plausible real advantage for a resident controller sharing a busy
+  machine, but it is **n=1 and incidental** -- it needs a designed experiment before
+  it is worth claiming.
+
+## Energy: still unmeasured
+
+RAPL is now readable (`package-0` and a `core` subdomain). It resolves CPU load
+cleanly -- 16 spinning threads read **+63.7 W over idle, paired sd 1.26 W**. It has
+not yet produced a usable NPU number: the attempt returned **-3.2 W**, which is
+physically impossible for adding work, because the "idle" windows were contaminated
+by the same stray process and by unrelated system load. The `core` subdomain also
+behaves oddly (it *fell* from 7.6 W to 5.7 W under 16 spinning threads), so only
+`package-0` should be trusted on this part.
+
+Measuring NPU perf/W needs a quiet machine and paired alternating windows. Until
+then there is **no energy result here**, and the perf/W case for the NPU -- which is
+probably its strongest case -- remains unsupported.
