@@ -7,7 +7,11 @@ mechanism with a smaller experiment first. **The pipeline is deliberately not
 implemented here.**
 
 Base commit: `fb4493e9241cf82b3d1a3b03a0780aa0dc333585` (`next-pass-results`).
-Branch: `overlap-de-risk`, ending at `5eba847943a05c6a0e55b7cbdf15bf44ed49307e`. `main` was at `885df0ca` and was not touched.
+Branch: `overlap-de-risk`. **Measurements in this document correspond to the
+runtime and patch at `99a07f8`** -- the last commit on this branch that changed
+`runtime/` or `patches/`; commits after it add artifacts and prose only. The live
+branch tip comes from `git rev-parse` and is deliberately not embedded here.
+`main` was at `885df0ca` and was not touched.
 
 Every claim below is tagged:
 
@@ -99,7 +103,7 @@ by an N-outer loop order -- and found it worth ~2%. It did not measure data
 movement in general.
 
 This pass measured a *different* data-movement cost on the same path,
-`stage_out`, at **162 ms per prefill, 11.4% of wall** (section 2). So the
+`stage_out`, at **162 ms per prefill, 9.6% of wall** (section 2). So the
 generalisation was wrong, and the specific 2% figure remains correct for what it
 actually measured. Deep-K accumulation, fusion and packed residency have **not**
 been disproven; they are unmeasured.
@@ -230,8 +234,29 @@ Forcing every token tile to the NPU (`BITNET_XDNA_TILES=2`) isolates the cost of
 `stage_out` is a `memcpy` of the NPU's int32 results out of the mapped output
 buffer, running **single-threaded on thread 0 at 14 GB/s while the other 14
 threads are parked at the `ggml_barrier`**. At the deployed configuration that
-is **~194 ms per prefill, 11.4% of the 1697 ms wall**, spent moving bytes that
-the epilogue is about to read again.
+is **194 ms per prefill of single-threaded thread-0 work, 11.4% of the 1697 ms
+wall** -- of which `stage_out` alone is **162 ms (9.6%)**, spent moving bytes the
+epilogue is about to read again.
+
+**What a direct mapped-output path could actually remove**, stated separately so
+the three costs are not conflated:
+
+| cost | per prefill (auto) | threading | removable by direct output? |
+|---|---:|---|---|
+| `stage_out` (mapped C -> `g_acc`) | **162 ms** | single, thread 0 | **yes** -- the epilogue would read the mapped slot instead |
+| `stage_in` (activations -> mapped A) | 32 ms | single, thread 0 | **no** -- activations must still reach the device buffer |
+| epilogue (int32 -> f32 into `dst`) | ~40 ms wall | all 15 threads | **no** -- the scaling still has to happen |
+
+So the ceiling of `stage_out` elimination is **162 ms of 1697 ms = 9.6%**, i.e.
+**~1.11x**, not the full 194 ms.
+
+**And that 162 ms does not cover every shape.** The `g_stage_out_ns` counter sits
+inside the `k_chunks == 1` branch, so it measures `attn_q`, `attn_out`,
+`ffn_gate` and `ffn_up` only. `ffn_down` (`k_chunks == 3`) evacuates through a
+different path -- int32 partial accumulation into `part`, then one copy into
+`g_acc` -- which **is not instrumented and is not included in the 162 ms**. Its
+cost is currently unknown, so the 9.6% is a floor for the total output-path cost
+and a ceiling for what this specific change removes.
 
 It exists because thread 0 issues every N-chunk dispatch into one reused mapped C
 buffer, so results must be evacuated before the next dispatch overwrites them.
@@ -546,8 +571,12 @@ results into `g_acc` before the next dispatch overwrites them. That copy is
 **162 ms per prefill at the deployed configuration (309 ms at all-NPU), 2.27 GB,
 single-threaded at 14 GB/s, while the other 14 threads are parked at the
 `ggml_barrier`.** The epilogue then reads `g_acc` again to scale it into `dst`.
-With `stage_in` and the epilogue that is ~194 ms, **11.4% of a 1697 ms prefill**,
-spent moving bytes that are about to be read again.
+
+`stage_out` is what this change removes: **162 ms, 9.6% of a 1697 ms prefill**.
+`stage_in` (32 ms) and the epilogue itself (~40 ms wall) remain -- together the
+three are 194 ms of which only the first is eliminable. Note also that the
+counter covers only the `k_chunks == 1` shapes; `ffn_down`'s deep-K accumulation
+path is uninstrumented and excluded.
 
 **The change.** Give each dispatch its own region of one output arena
 (`xrt::bo` sub-buffers over a `M_tile x 7680 x 4` = 31.5 MB parent, the pattern
@@ -557,8 +586,8 @@ multi-threaded epilogue then reads the mapped device buffer directly and writes
 `write g_acc + read g_acc + write dst` to `read mapped + write dst`, and the work
 moves off thread 0 onto all threads.
 
-**Predicted gain: ~1.11x at 2K** (162 ms of 1685 ms), of which the async spike
-already demonstrates 1.033x. This is a *prediction from measurement*, not a
+**Predicted gain: ~1.11x at 2K** (162 ms of 1685 ms -- `stage_out` only, not the
+full 194 ms), of which the async spike already demonstrates 1.033x. This is a *prediction from measurement*, not a
 measured result, and must be verified before it is quoted.
 
 **Why this and not the alternatives:**
@@ -568,7 +597,7 @@ measured result, and must be verified before it is quoted.
 | Cross-micro-batch pipeline | 1.02-1.05x simulated, invasive. Section 6. |
 | Kernel tuned toward 25 TOPS | The NPU is idle 75.5% of prefill; making it faster while idle changes little, and the deployed split already balances the engines. |
 | int4 / 2-bit weights over DMA | Measured 1.035x compute last pass; a bandwidth optimisation whose payoff is in NPU **decode**, which is not a goal. |
-| Deep-K accumulation, block fusion, packed residency | **Unmeasured, not disproven.** The previous pass's "~2% data movement" figure covered one specific activation-copy effect only; this pass found a different data-movement cost at 11.4%, so this family deserves measurement rather than dismissal. |
+| Deep-K accumulation, block fusion, packed residency | **Unmeasured, not disproven.** The previous pass's "~2% data movement" figure covered one specific activation-copy effect only; this pass found a different data-movement cost at 9.6%, so this family deserves measurement rather than dismissal. |
 
 **It also unblocks the thread-starved regime, which is the deployment target.**
 Staging is why the all-NPU assignment (933 tok/s) loses to CPU-only (1015) at 15
@@ -619,7 +648,7 @@ achieves on aie2p for these shapes -- not an implementation commitment.
    broadly comparable throughput.
 3. **"Data movement is worth ~2%"** -- that figure covered one specific
    activation-copy effect. A different data-movement cost on the same path
-   measures 11.4%. Deep-K accumulation, fusion and packed residency are
+   measures 9.6%. Deep-K accumulation, fusion and packed residency are
    **unmeasured, not disproven.**
 
 ### Reproduction
