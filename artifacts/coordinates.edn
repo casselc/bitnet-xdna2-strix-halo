@@ -3,7 +3,7 @@
 ;; nothing is copied from documentation without a check.
 {:milestone   "xdna2-bitnet-hybrid-prefill-mvp"
  :captured-at "2026-08-30"
- :host        "marvin"
+ :host        "<redacted-hostname>"
 
  :hardware
  {:cpu        "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S"
