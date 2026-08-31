@@ -88,9 +88,19 @@ class Req:
         s = self.server
         for k_out, k_in in (("prompt_n", "prompt_n"), ("gen_n", "predicted_n"),
                             ("prompt_ms", "prompt_ms"),
-                            ("gen_ms", "predicted_ms")):
+                            ("gen_ms", "predicted_ms"), ("cache_n", "cache_n")):
             if k_in in s:
                 d[k_out] = round(s[k_in], 2) if isinstance(s[k_in], float) else s[k_in]
+        if s.get("prompt_n") is not None:
+            # The server reports prompt_n as tokens it ACTUALLY EVALUATED and
+            # cache_n as tokens it reused, so the prompt the client supplied is
+            # their sum. Measured directly: cache off gives prompt_n=1954,
+            # cache_n=0; cache on gives prompt_n=1, cache_n=1953.
+            ev = int(s["prompt_n"])
+            reused = max(int(s.get("cache_n", 0) or 0), 0)
+            d["eval_n"] = ev
+            d["reused_n"] = reused
+            d["supplied_n"] = ev + reused
         if "prompt_ms" in s and "predicted_ms" in s:
             svc = s["prompt_ms"] + s["predicted_ms"]
             d["service_ms"] = round(svc, 2)
@@ -108,27 +118,33 @@ class Req:
         return d
 
 
-def run_controller(rid, threads, conc, n_predict, prompt):
+def run_controller(rid, threads, conc, n_predict, prompt, cache=False,
+                   capture_text=False, extra=None):
     r = Req(rid, "C", threads, conc)
     r.t_submit = time.time()
     try:
-        d = post(CTRL, "/completion",
-                 dict(prompt=prompt, n_predict=n_predict, temperature=0,
-                      seed=42, cache_prompt=False))
+        body = dict(prompt=prompt, n_predict=n_predict, temperature=0,
+                    seed=42, cache_prompt=bool(cache))
+        if extra:
+            body.update(extra)
+        d = post(CTRL, "/completion", body)
         r.server = d.get("timings", {})
+        if capture_text:
+            r.chain["text"] = d.get("content", "")
+            r.chain["tokens"] = len(d.get("tokens", []) or [])
     except Exception as e:
         r.err = f"{type(e).__name__}: {str(e)[:80]}"
     r.t_end = time.time()
     return r
 
 
-def run_worker(rid, conc, n_predict, prompt=WORKER_PROMPT, cls="W"):
+def run_worker(rid, conc, n_predict, prompt=WORKER_PROMPT, cls="W", cache=False):
     r = Req(rid, cls, 0, conc)
     r.t_submit = time.time()
     try:
         d = post(WORK, "/completion",
                  dict(prompt=prompt, n_predict=n_predict, temperature=0,
-                      seed=42, cache_prompt=False))
+                      seed=42, cache_prompt=bool(cache)))
         r.server = d.get("timings", {})
     except Exception as e:
         r.err = f"{type(e).__name__}: {str(e)[:80]}"
@@ -407,6 +423,10 @@ def cell(label, make_req, n, conc, lease_csv, jsonl, threads):
     rec["gen_tok_s_agg"] = round(tot_gen / wall, 2) if wall else None
     tot_pp = sum(r.get("prompt_n", 0) or 0 for r in ok)
     rec["prompt_tok_s_agg"] = round(tot_pp / wall, 2) if wall else None
+    for k in ("supplied_n", "reused_n", "eval_n"):
+        v = [r[k] for r in ok if r.get(k) is not None]
+        if v:
+            rec[f"{k}_mean"] = round(sum(v) / len(v), 1)
     for k in ("total_ms", "ttft_ms", "queue_ms", "service_ms", "chain_ms"):
         rec.update(summarize(ok, k))
     rec.update(lw.delta())
@@ -425,6 +445,12 @@ def main():
                          "wall time -- a fixed-duration tenant outliving the "
                          "benchmark is what made power incomparable last pass")
     ap.add_argument("--soak-s", type=int, default=1800)
+    ap.add_argument("--cache", action="store_true",
+                    help="send cache_prompt=true (the previous pass sent false, "
+                         "which disabled prefix reuse on every request)")
+    ap.add_argument("--warmup", type=int, default=0,
+                    help="requests to run and DISCARD before timing, so a cold "
+                         "slot is not averaged into a warm-cache measurement")
     ap.add_argument("--threads", type=int, default=6)
     ap.add_argument("--conc", type=int, nargs="+", default=[1])
     ap.add_argument("--n", type=int, default=8)
@@ -456,12 +482,17 @@ def main():
 
     elif a.mode == "concurrency":
         for c in a.conc:
+            for w in range(a.warmup):
+                run_controller(f"warm{w}", a.threads, 1, a.ctrl_predict,
+                               prompt, cache=a.cache)
             mk = lambda i, cc: run_controller(f"C{i}", a.threads, cc,
-                                              a.ctrl_predict, prompt)
-            rec, _ = cell(f"conc-t{a.threads}-c{c}", mk, a.n, c,
+                                              a.ctrl_predict, prompt,
+                                              cache=a.cache)
+            rec, _ = cell(f"conc-t{a.threads}-c{c}-cache{int(a.cache)}", mk, a.n, c,
                           a.lease_csv, jsonl, a.threads)
             out.append(rec)
-            print(f"  t{a.threads} c={c:<2} req/s={rec['req_per_s']:<6} "
+            print(f"  t{a.threads} cache={int(a.cache)} c={c:<2} "
+                  f"req/s={rec['req_per_s']:<6} "
                   f"ttft p50={rec.get('ttft_ms_p50')} p95={rec.get('ttft_ms_p95')} "
                   f"total p50={rec.get('total_ms_p50')} p95={rec.get('total_ms_p95')} "
                   f"queue p95={rec.get('queue_ms_p95')} "
