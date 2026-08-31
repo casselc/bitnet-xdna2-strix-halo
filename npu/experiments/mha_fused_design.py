@@ -64,7 +64,7 @@ def from_tile_major(flat, rows, cols, r, c):
 
 
 def fused_mha(B_q=64, B_kv=64, d=64, n_kv_blocks=64, kv_depth=4,
-              relayout_traffic=False):
+              relayout_traffic=False, dump_a=False):
     """One fused core, one q block, n_kv_blocks key blocks.
 
     Every block must be a FULL off-diagonal block -- the steady-state pair the
@@ -176,7 +176,28 @@ def fused_mha(B_q=64, B_kv=64, d=64, n_kv_blocks=64, kv_depth=4,
             of_o.release(1)
             of_q.release(1)
 
-    worker = Worker(fused, [of_q.cons(), of_kv.cons(), of_o.prod(),
+    def dump_qk(of_q, of_kv, of_o, a_buf, scale_buf, idx_buf,
+                zero, matmul_QK, partial_softmax, matmul_PV, rescale_O,
+                init_scale, passthru):
+        """Emit the QK matmul's C tile verbatim, to settle its element layout
+        empirically rather than by reading mm.cc. mm.cc's c_row_maj (already
+        true here, since MHA does not define C_COL_MAJ) selects TILE ordering;
+        this establishes what it does to elements WITHIN a tile."""
+        for _ in range_(sys.maxsize):
+            elem_q = of_q.acquire(1)
+            elem_o = of_o.acquire(1)
+            idx_buf[0] = 0
+            idx_buf[1] = q_block_bias
+            kv = of_kv.acquire(2)
+            zero(a_buf)
+            matmul_QK(elem_q, kv[0], a_buf, idx_buf)
+            passthru(a_buf, elem_o, B_q * B_kv)
+            of_kv.release(2)
+            of_o.release(1)
+            of_q.release(1)
+
+    worker = Worker(dump_qk if dump_a else fused,
+                    [of_q.cons(), of_kv.cons(), of_o.prod(),
                             a_buf, scale_buf, idx_buf, zero, matmul_QK,
                             partial_softmax, matmul_PV, rescale_O, init_scale,
                             passthru])

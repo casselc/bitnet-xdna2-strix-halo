@@ -28,6 +28,11 @@ def main():
     ap.add_argument("--layers", type=int, default=30)
     ap.add_argument("--cores", type=int, default=32)
     ap.add_argument("--material-gain", type=float, default=0.15)
+    ap.add_argument("--no-relayout", action="store_true",
+                    help="model a tile-major-aware softmax, which would make "
+                         "both inter-stage transforms cancel: the QK matmul's "
+                         "(r,t) output tiling is already the layout the PV "
+                         "matmul wants for its A operand")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
     d = Path(a.dir)
@@ -54,6 +59,8 @@ def main():
     measured = fused["slope_us_per_pair"]
     penalty = measured / naive_sum
     relayout = fused.get("relayout_slope_us_per_pair", measured) / measured
+    if a.no_relayout:
+        relayout = 1.0
     c_qblock = fused["intercept_us"]
     stock_service = fused["stock_service_us"]
 

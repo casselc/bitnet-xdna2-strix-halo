@@ -180,11 +180,74 @@ reopens this:
    free.** Any fused design pays for them. This is the non-obvious cost and it
    is why "one core does the same work" understates the problem.
 4. **Fusing costs 1.167x the naive sum of stage times**, measured.
-5. The remaining gap at 4K is small enough that a *correct* fused kernel with a
-   cheap on-core relayout, or a design that avoids the relayout by having the QK
-   matmul emit row-major C directly, could plausibly cross 15%. That is a kernel
-   research project, not a port, and it is not proposed as the next default.
+5. ~~The remaining gap at 4K is small enough that a *correct* fused kernel with
+   a cheap on-core relayout, or a design that avoids the relayout by having the
+   QK matmul emit row-major C directly, could plausibly cross 15%.~~
+   **Retracted — see section 7. Measured, eliminating the relayout entirely
+   moves 4K from +2.7% to +3.6%. It cannot cross 15%, and the row-major-C
+   variant does not exist.**
 
 This does not change the standing partition: **XDNA2** for BitNet linear
 prefill, **Zen 5** for attention, decode and orchestration, **Radeon** for a
 future larger local worker.
+
+
+---
+
+## 7. Correction: the row-major-C variant, measured [MEASURED]
+
+Section 6 speculated that avoiding the inter-stage relayout — by having the QK
+matmul emit row-major C — could plausibly cross the 15% gate. **Both halves of
+that are now measured and both are wrong.** The claim above is struck rather
+than edited away.
+
+### The variant does not exist
+
+`mm.cc` has a `c_row_maj` template parameter, and MHA's QK matmul **already uses
+`is_c_row_maj = true`** (it does not define `-DC_COL_MAJ`) — yet still needs the
+relayout. Testing rather than reading settles why: a single core was built that
+emits the QK matmul's C tile verbatim, and its output compared against
+`Q @ K^T` under both interpretations.
+
+| interpretation | rel-L2 |
+|---|---:|
+| flat row-major | 0.14810 |
+| **(8,8) tile-major** | **0.00206** |
+
+**`c_row_maj` selects tile ORDERING, not element layout.** The `aie::mmul`
+accumulator is inherently `(r,t)`-blocked and is written back with one
+contiguous `store_v` of `size_C`, so `mm.cc` cannot emit flat row-major C at any
+setting. There is no configuration to switch to.
+
+### What the real fix would be, and what it would buy
+
+The productive observation is that the QK output's `(r,t) = (8,8)` tiling **is
+already** the layout the PV matmul wants for its A operand. So both transforms
+cancel if `partial_softmax` reads tile-major — `a_dims` and `q_dims` exist only
+because `partial_softmax_bf16` assumes contiguous rows. That is a change to
+`softmax.cc`, not a config flag.
+
+Its ceiling is already measured, because the fused core's 18.845 µs/pair figure
+**contains no relayout at all**. Running the gate with the relayout removed:
+
+| T | config | C_qblock | vs CPU | gain |
+|---:|---|---:|---:|---:|
+| 3968 | d128 64x32 | 1x | 0.96x | **+3.6%** (was +2.7%) |
+| 3968 | d128 64x32 | 2x | 1.05x | −4.5% |
+| 2048 | d128 64x32 | 1x | 0.77x | +22.9% |
+
+**+0.9 percentage points, against a 15% gate.** And 18.845 µs/pair is optimistic
+even for that path: a tile-major softmax must do its per-row max and sum over
+strided data, which needs shuffles the row-major version does not.
+
+**The relayout was never the binding cost.** The binding costs are the ones
+measured in section 4 — the **1.167x** fusion penalty and the **93.7 µs**
+per-q-block cost. Eliminating a 1.2% term cannot fix a case that misses by more
+than 11 points.
+
+### Verdict unchanged
+
+**FUSED CORE CLOSED — MARGINAL**, and now closed against the specific escape
+route section 6 left open. Nothing remains cheap here: the next thing anyone
+tries has to attack the fusion penalty or the per-q-block cost, both of which
+are properties of running three stages on one core rather than of the layout.
