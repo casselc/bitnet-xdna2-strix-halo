@@ -793,10 +793,20 @@ int64_t bitnet_xdna_token_split_nt(int64_t n_tokens, int n_threads) {
     const double f = g_npu_threads / (g_npu_threads + cpu_workers);
 
     int64_t tiles = (int64_t)((double)n_tokens / (double)kMTile * f + 0.5);
-    const int64_t max_tiles = n_tokens / kMTile;
+    /* ceil, not floor. A micro-batch is rarely a whole multiple of kMTile -- at
+     * pp3968 with -ub 2048 the trailing one is 1920 tokens -- and flooring made
+     * a partial trailing tile unassignable, so the NPU could take at most 1024
+     * of those 1920 however strongly the model favoured it. The remainder went
+     * to the CPU workers, which at low thread counts are exactly the ones that
+     * cannot absorb it: measured 17.3% below the best allocation at 3 threads,
+     * 7.5% at 5. The forced path already clamped to n_tokens; this makes the
+     * auto path agree. Micro-batches that ARE whole multiples are unaffected,
+     * so the 2K/3K calibration does not move. */
+    const int64_t max_tiles = (n_tokens + kMTile - 1) / kMTile;
     if (tiles < 0) tiles = 0;
     if (tiles > max_tiles) tiles = max_tiles;
     int64_t t = tiles * kMTile;
+    if (t > n_tokens) t = n_tokens;
 
     /* Giving the NPU every token means no CPU worker has anything to do, which
      * throws away n_threads-1 cores. Only do that when the model actually says
