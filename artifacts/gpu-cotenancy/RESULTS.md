@@ -158,27 +158,47 @@ manufactured from a utilisation proxy.
 
 A workload shaped like the eventual control plane rather than a synthetic loop:
 structured Clojure (SCI/babashka) building a 220-node dependency graph,
-topologically ordering it, and checking the ordering invariant — the shape a
-verifier actually has. Standalone baseline **1153 ops/s, p50 0.770 ms,
-p95 1.275 ms**.
+topologically ordering it (Kahn), and checking the ordering invariant — the
+shape a verifier actually has.
+
+Effect on the other tenants, controller at t6:
 
 | arm | controller | GPU pp | GPU tg |
 |---|---:|---:|---:|
 | **D** GPU + controller t6 | 564.0 | 243.2 | 11.18 |
-| **G** GPU + controller t6 **+ tenant** | 549.1 | 236.4 | 11.02 |
-| | **−2.6%** | **−2.8%** | **−1.4%** |
+| **G** GPU + controller t6 **+ tenant** | 558.5 | 237.5 | 11.01 |
+| | −1.0% | −2.3% | −1.5% |
 | controller t6 alone | 750.4 | — | — |
-| **H** controller t6 **+ tenant**, no GPU | 739.4 | — | — |
-| | **−1.5%** | | |
+| **H** controller t6 **+ tenant**, no GPU | 738.5 | — | — |
+| | −1.6% | | |
 
-**Adding a real control-plane tenant costs 1.5–2.8%.** There is genuine CPU
-headroom left at t6 even with the GPU worker running — which is the practical
-case for the recommended default.
+Effect **on the tenant itself**, which is the part a throughput number hides:
+
+| arm | ops/s | p50 | p95 |
+|---|---:|---:|---:|
+| tenant alone | **1305.9** | 0.734 ms | 0.892 ms |
+| **H** + controller | 1275.9 (−2.3%) | 0.743 ms (+1.2%) | 1.053 ms (**+18.0%**) |
+| **G** + controller + GPU | 1208.9 (**−7.4%**) | 0.773 ms (+5.3%) | 1.198 ms (**+34.3%**) |
+
+**The tail degrades far more than the median or the throughput.** Under full
+tri-device load the tenant keeps 92.6% of its throughput and 94.7% of its median
+latency, but its **p95 rises 34.3%**. A control plane that is judged on mean
+throughput would call this nearly free; judged on tail latency it is the largest
+single co-tenancy effect measured in this pass.
+
+This is why the tenant reports a distribution rather than a rate. It does not
+change the verdict — a 1.2 ms p95 is still comfortable for a verifier — but it
+is the number to watch if the control plane ever acquires a deadline.
 
 *Power in arms G and H is not comparable to the others.* The tenant runs a fixed
 25 s while the benchmarks finish earlier, so package power is averaged over a
-window that includes idle tail. The G figure (80.4 W vs D's 101.9 W) is that
-averaging artifact, not a real power saving.
+window that includes idle tail. G's 80.4 W against D's 101.9 W is that averaging
+artifact, not a power saving.
+
+*Arm F reproduced independently.* A second full run of these arms gave GPU
+pp512 **290.8** and tg64 **12.30**, against arm A's 288.5 / 12.29 — confirming
+the section 5 result (resident NPU weights cost the GPU nothing) across two
+separate measurement runs.
 
 ## 6. Verdict
 

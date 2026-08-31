@@ -1,124 +1,37 @@
 [
   {
     "arm": "tenant alone",
-    "wall_s": 25.07,
+    "wall_s": 25.02,
     "watts": 34.3,
     "pids": {
-      "tenant": 3712905
-    },
-    "gpu_busy_median": 0,
-    "gpu_busy_max": 0,
-    "gtt_gib_max": 41.28,
-    "tenant": {},
-    "round": 0
-  },
-  {
-    "arm": "F  gpu + ctrl DECODE",
-    "wall_s": 15.37,
-    "watts": 82.1,
-    "pids": {
-      "worker": 3713016,
-      "controller": 3713017
-    },
-    "gpu_busy_median": 69,
-    "gpu_busy_max": 100,
-    "gtt_gib_max": 57.8,
-    "worker": {
-      "pp512": [
-        289.91,
-        0.0
-      ],
-      "tg64": [
-        12.29,
-        0.0
-      ]
-    },
-    "controller": {
-      "tg128": [
-        41.23,
-        0.78
-      ]
-    },
-    "round": 0
-  },
-  {
-    "arm": "G  gpu + ctrl t6 + tenant",
-    "wall_s": 25.02,
-    "watts": 80.4,
-    "pids": {
-      "worker": 3713134,
-      "controller": 3713135,
-      "tenant": 3713136
-    },
-    "gpu_busy_median": 30.0,
-    "gpu_busy_max": 100,
-    "gtt_gib_max": 57.8,
-    "worker": {
-      "pp512": [
-        237.8,
-        0.0
-      ],
-      "tg64": [
-        11.09,
-        0.0
-      ]
-    },
-    "controller": {
-      "pp2048": [
-        561.9,
-        119.61
-      ]
-    },
-    "tenant": {},
-    "round": 0
-  },
-  {
-    "arm": "H  ctrl + tenant (no gpu)",
-    "wall_s": 25.02,
-    "watts": 58.0,
-    "pids": {
-      "controller": 3713272,
-      "tenant": 3713273
+      "tenant": 3714804
     },
     "gpu_busy_median": 0.0,
     "gpu_busy_max": 0,
     "gtt_gib_max": 41.28,
-    "controller": {
-      "pp2048": [
-        739.43,
-        2.41
-      ]
+    "tenant": {
+      "ops": 32395,
+      "wall_s": 25.01,
+      "ops_per_s": 1295.4,
+      "p50_ms": 0.738,
+      "p95_ms": 0.911
     },
-    "tenant": {},
     "round": 0
   },
   {
-    "arm": "tenant alone",
-    "wall_s": 25.02,
-    "watts": 34.4,
-    "pids": {
-      "tenant": 3713394
-    },
-    "gpu_busy_median": 0.0,
-    "gpu_busy_max": 0,
-    "gtt_gib_max": 41.28,
-    "tenant": {},
-    "round": 1
-  },
-  {
     "arm": "F  gpu + ctrl DECODE",
-    "wall_s": 15.88,
-    "watts": 81.2,
+    "wall_s": 15.65,
+    "watts": 81.8,
     "pids": {
-      "worker": 3713483,
-      "controller": 3713484
+      "worker": 3714926,
+      "controller": 3714927
     },
-    "gpu_busy_median": 56.5,
+    "gpu_busy_median": 65.0,
     "gpu_busy_max": 100,
     "gtt_gib_max": 57.8,
     "worker": {
       "pp512": [
-        290.77,
+        291.5,
         0.0
       ],
       "tg64": [
@@ -128,120 +41,27 @@
     },
     "controller": {
       "tg128": [
-        42.15,
-        1.97
+        42.56,
+        1.4
       ]
     },
-    "round": 1
-  },
-  {
-    "arm": "G  gpu + ctrl t6 + tenant",
-    "wall_s": 25.02,
-    "watts": 80.6,
-    "pids": {
-      "worker": 3713598,
-      "controller": 3713599,
-      "tenant": 3713600
-    },
-    "gpu_busy_median": 28.5,
-    "gpu_busy_max": 100,
-    "gtt_gib_max": 57.8,
-    "worker": {
-      "pp512": [
-        235.14,
-        0.0
-      ],
-      "tg64": [
-        11.01,
-        0.0
-      ]
-    },
-    "controller": {
-      "pp2048": [
-        541.79,
-        84.46
-      ]
-    },
-    "tenant": {},
-    "round": 1
-  },
-  {
-    "arm": "H  ctrl + tenant (no gpu)",
-    "wall_s": 25.02,
-    "watts": 57.8,
-    "pids": {
-      "controller": 3713864,
-      "tenant": 3713865
-    },
-    "gpu_busy_median": 0.0,
-    "gpu_busy_max": 0,
-    "gtt_gib_max": 41.28,
-    "controller": {
-      "pp2048": [
-        739.95,
-        2.64
-      ]
-    },
-    "tenant": {},
-    "round": 1
-  },
-  {
-    "arm": "tenant alone",
-    "wall_s": 25.02,
-    "watts": 34.6,
-    "pids": {
-      "tenant": 3713980
-    },
-    "gpu_busy_median": 0.0,
-    "gpu_busy_max": 0,
-    "gtt_gib_max": 41.28,
-    "tenant": {},
-    "round": 2
-  },
-  {
-    "arm": "F  gpu + ctrl DECODE",
-    "wall_s": 15.25,
-    "watts": 83.4,
-    "pids": {
-      "worker": 3714184,
-      "controller": 3714185
-    },
-    "gpu_busy_median": 72,
-    "gpu_busy_max": 100,
-    "gtt_gib_max": 57.8,
-    "worker": {
-      "pp512": [
-        290.26,
-        0.0
-      ],
-      "tg64": [
-        12.28,
-        0.0
-      ]
-    },
-    "controller": {
-      "tg128": [
-        42.72,
-        0.89
-      ]
-    },
-    "round": 2
+    "round": 0
   },
   {
     "arm": "G  gpu + ctrl t6 + tenant",
     "wall_s": 25.04,
-    "watts": 81.0,
+    "watts": 80.1,
     "pids": {
-      "worker": 3714317,
-      "controller": 3714318,
-      "tenant": 3714319
+      "worker": 3715048,
+      "controller": 3715049,
+      "tenant": 3715050
     },
-    "gpu_busy_median": 29.5,
+    "gpu_busy_median": 31.0,
     "gpu_busy_max": 100,
     "gtt_gib_max": 57.8,
     "worker": {
       "pp512": [
-        236.41,
+        237.49,
         0.0
       ],
       "tg64": [
@@ -251,31 +71,265 @@
     },
     "controller": {
       "pp2048": [
-        549.09,
-        97.9
+        559.68,
+        113.89
       ]
     },
-    "tenant": {},
-    "round": 2
+    "tenant": {
+      "ops": 30564,
+      "wall_s": 25.01,
+      "ops_per_s": 1222.2,
+      "p50_ms": 0.763,
+      "p95_ms": 1.172
+    },
+    "round": 0
   },
   {
     "arm": "H  ctrl + tenant (no gpu)",
     "wall_s": 25.02,
-    "watts": 58.3,
+    "watts": 57.7,
     "pids": {
-      "controller": 3714456,
-      "tenant": 3714457
+      "controller": 3715184,
+      "tenant": 3715185
     },
     "gpu_busy_median": 0.0,
     "gpu_busy_max": 0,
     "gtt_gib_max": 41.28,
     "controller": {
       "pp2048": [
-        710.51,
-        3.9
+        738.5,
+        2.09
       ]
     },
-    "tenant": {},
+    "tenant": {
+      "ops": 31908,
+      "wall_s": 25.01,
+      "ops_per_s": 1275.9,
+      "p50_ms": 0.743,
+      "p95_ms": 1.054
+    },
+    "round": 0
+  },
+  {
+    "arm": "tenant alone",
+    "wall_s": 25.02,
+    "watts": 33.9,
+    "pids": {
+      "tenant": 3715356
+    },
+    "gpu_busy_median": 0.0,
+    "gpu_busy_max": 0,
+    "gtt_gib_max": 41.28,
+    "tenant": {
+      "ops": 32825,
+      "wall_s": 25.01,
+      "ops_per_s": 1312.6,
+      "p50_ms": 0.729,
+      "p95_ms": 0.891
+    },
+    "round": 1
+  },
+  {
+    "arm": "F  gpu + ctrl DECODE",
+    "wall_s": 14.77,
+    "watts": 85.2,
+    "pids": {
+      "worker": 3715454,
+      "controller": 3715455
+    },
+    "gpu_busy_median": 78.5,
+    "gpu_busy_max": 100,
+    "gtt_gib_max": 57.8,
+    "worker": {
+      "pp512": [
+        290.25,
+        0.0
+      ],
+      "tg64": [
+        12.29,
+        0.0
+      ]
+    },
+    "controller": {
+      "tg128": [
+        41.99,
+        0.52
+      ]
+    },
+    "round": 1
+  },
+  {
+    "arm": "G  gpu + ctrl t6 + tenant",
+    "wall_s": 25.02,
+    "watts": 81.4,
+    "pids": {
+      "worker": 3715708,
+      "controller": 3715709,
+      "tenant": 3715710
+    },
+    "gpu_busy_median": 31.0,
+    "gpu_busy_max": 99,
+    "gtt_gib_max": 57.8,
+    "worker": {
+      "pp512": [
+        237.15,
+        0.0
+      ],
+      "tg64": [
+        11.01,
+        0.0
+      ]
+    },
+    "controller": {
+      "pp2048": [
+        558.55,
+        123.27
+      ]
+    },
+    "tenant": {
+      "ops": 29978,
+      "wall_s": 25.01,
+      "ops_per_s": 1198.7,
+      "p50_ms": 0.773,
+      "p95_ms": 1.23
+    },
+    "round": 1
+  },
+  {
+    "arm": "H  ctrl + tenant (no gpu)",
+    "wall_s": 25.02,
+    "watts": 57.1,
+    "pids": {
+      "controller": 3717105,
+      "tenant": 3717106
+    },
+    "gpu_busy_median": 0.0,
+    "gpu_busy_max": 0,
+    "gtt_gib_max": 41.28,
+    "controller": {
+      "pp2048": [
+        741.19,
+        9.08
+      ]
+    },
+    "tenant": {
+      "ops": 31904,
+      "wall_s": 25.01,
+      "ops_per_s": 1275.7,
+      "p50_ms": 0.743,
+      "p95_ms": 1.053
+    },
+    "round": 1
+  },
+  {
+    "arm": "tenant alone",
+    "wall_s": 25.02,
+    "watts": 33.7,
+    "pids": {
+      "tenant": 3717198
+    },
+    "gpu_busy_median": 0,
+    "gpu_busy_max": 0,
+    "gtt_gib_max": 41.28,
+    "tenant": {
+      "ops": 32658,
+      "wall_s": 25.01,
+      "ops_per_s": 1305.9,
+      "p50_ms": 0.734,
+      "p95_ms": 0.892
+    },
+    "round": 2
+  },
+  {
+    "arm": "F  gpu + ctrl DECODE",
+    "wall_s": 15.34,
+    "watts": 82.4,
+    "pids": {
+      "worker": 3717294,
+      "controller": 3717295
+    },
+    "gpu_busy_median": 69,
+    "gpu_busy_max": 100,
+    "gtt_gib_max": 57.8,
+    "worker": {
+      "pp512": [
+        290.83,
+        0.0
+      ],
+      "tg64": [
+        12.3,
+        0.0
+      ]
+    },
+    "controller": {
+      "tg128": [
+        41.95,
+        0.55
+      ]
+    },
+    "round": 2
+  },
+  {
+    "arm": "G  gpu + ctrl t6 + tenant",
+    "wall_s": 25.02,
+    "watts": 80.4,
+    "pids": {
+      "worker": 3717403,
+      "controller": 3717404,
+      "tenant": 3717405
+    },
+    "gpu_busy_median": 28.5,
+    "gpu_busy_max": 100,
+    "gtt_gib_max": 57.8,
+    "worker": {
+      "pp512": [
+        237.92,
+        0.0
+      ],
+      "tg64": [
+        11.01,
+        0.0
+      ]
+    },
+    "controller": {
+      "pp2048": [
+        552.32,
+        111.02
+      ]
+    },
+    "tenant": {
+      "ops": 30232,
+      "wall_s": 25.01,
+      "ops_per_s": 1208.9,
+      "p50_ms": 0.773,
+      "p95_ms": 1.198
+    },
+    "round": 2
+  },
+  {
+    "arm": "H  ctrl + tenant (no gpu)",
+    "wall_s": 25.02,
+    "watts": 57.8,
+    "pids": {
+      "controller": 3717537,
+      "tenant": 3717538
+    },
+    "gpu_busy_median": 0.0,
+    "gpu_busy_max": 0,
+    "gtt_gib_max": 41.28,
+    "controller": {
+      "pp2048": [
+        732.68,
+        5.89
+      ]
+    },
+    "tenant": {
+      "ops": 32315,
+      "wall_s": 25.01,
+      "ops_per_s": 1292.2,
+      "p50_ms": 0.734,
+      "p95_ms": 1.038
+    },
     "round": 2
   }
 ]
