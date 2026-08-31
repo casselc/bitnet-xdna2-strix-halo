@@ -1,0 +1,12 @@
+{
+  "B_q": 64,
+  "B_kv": 64,
+  "d": 64,
+  "mmul_r": 8,
+  "mmul_t": 8,
+  "rel_l2": {
+    "flat_row_major": 0.14809761941432953,
+    "tile_major_8x8": 0.00205750809982419
+  },
+  "best_match": "tile_major_8x8"
+}
