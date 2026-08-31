@@ -67,6 +67,11 @@ def main():
 
     write_rows(a.out, rows)
     warm_n = sum(x["warm"] for x in rows)
+    # The capacity claim is only valid if the probe actually reached the knee.
+    # If every domain came back warm the working set never exceeded the cache,
+    # and warm_n is just --domains: reporting an implied state size from it
+    # would be arithmetic on a bound that was never hit.
+    found_knee = miss >= a.stop_after_misses
     print(f"\n  probed newest->oldest: {len(rows)} domains, {warm_n} warm "
           f"before {a.stop_after_misses} consecutive misses")
     print("  " + "".join("." if x["warm"] else "X" for x in rows))
@@ -78,6 +83,10 @@ def main():
         print(f"  cold TTFT median {st.median(ct):.0f} ms ({len(ct)} samples)")
     if not warm_n:
         print("  nothing warm: capacity is below the probe, or the cache is disabled")
+        return
+    if not found_knee:
+        print(f"\n  all {warm_n} domains still warm -- capacity is ABOVE {warm_n}, "
+              f"not equal to it. Re-run with a larger --domains to find the knee.")
         return
     tok = rows[0]["eval_n"] + rows[0]["reused_n"]
     implied = a.cache_ram_mib / warm_n
