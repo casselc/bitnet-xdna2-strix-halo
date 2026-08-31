@@ -1,4 +1,7 @@
-routing,slot,eval_n,reused_n,prefill_p50_ms
-warm-correct slot,0,1,1490,17
-wrong-prefix slot,1,1,1490,17
-cold slot,5,1,1490,17
+spine,routing,slot,eval_n,reused_n,supplied_n,prefill_p50_ms
+short spine (1490 tok),warm-correct slot,0,1,1490,1491,17.4
+short spine (1490 tok),wrong-prefix slot,1,1,1490,1491,17.2
+short spine (1490 tok),idle cold slot,5,1,1490,1491,17.4
+long spine (~2300 tok),warm-correct slot,0,1,2306,2307,19.5
+long spine (~2300 tok),wrong-prefix slot,1,1,2306,2307,19.8
+long spine (~2300 tok),idle cold slot,5,1,2306,2307,19.7

@@ -288,3 +288,89 @@ collect.
   push the working set past capacity rather than let it thrash. That is a real finding
   about *this* server's fixed model, exactly the bottleneck the brief asked to be recorded
   if it appeared. **It appeared.**
+
+## 11. Batching background cache fills [MEASURED]
+
+`artifacts/controller-state-scheduler/batch_fills.csv`. Issue 1, 2, 4 and 8 simultaneous
+cold spine fills and measure how long the batch takes.
+
+| simultaneous fills | wall | per-fill p50 | per-fill max | fills/s | speedup vs serial |
+|---|---|---|---|---|---|
+| 1 | 1565 ms | 1565 ms | 1565 ms | 0.64 | 1.00x |
+| 2 | 3388 ms | 3387 ms | 3387 ms | 0.59 | 1.66x |
+| 4 | 6202 ms | 6201 ms | 6201 ms | 0.64 | 3.12x |
+| 8 | 13657 ms | 9440 ms | 13656 ms | 0.59 | 5.07x |
+
+**Fills per second is flat at ~0.6 regardless of batch width.** The apparent "speedup vs
+serial" is arithmetic, not throughput: batching 8 fills makes each individual fill 8.7x
+slower (1565 -> 13656 ms worst case) while completing the same ~0.6 fills/s.
+
+This is the expected result and it is worth stating plainly, because it is easy to
+misread the 5.07x column as a win. Cold fills are bandwidth-bound prefill, and the box
+was already bandwidth-saturated at one fill. Batching background fills buys nothing on
+throughput; it only decides who waits. The one thing it does buy is *predictability* —
+issue them one at a time and each completes in a known ~1.6 s, which is what a background
+refresh scheduler actually wants.
+
+## 12. Cache affinity as a scheduling signal [MEASURED — it is not one]
+
+`id_slot` is settable per request, so warm-correct / wrong-prefix / idle-cold routing can
+be **forced** rather than inferred from `slot_prompt_similarity`.
+
+| spine | routing | eval | reused | prefill p50 |
+|---|---|---|---|---|
+| 1490 tok | warm-correct slot (0) | 1 | 1490 | 17.4 ms |
+| 1490 tok | wrong-prefix slot (1) | 1 | 1490 | 17.2 ms |
+| 1490 tok | idle cold slot (5) | 1 | 1490 | 17.4 ms |
+| 2306 tok | warm-correct slot (0) | 1 | 2306 | 19.5 ms |
+| 2306 tok | wrong-prefix slot (1) | 1 | 2306 | 19.8 ms |
+| 2306 tok | idle cold slot (5) | 1 | 2306 | 19.7 ms |
+
+**Routing to the "wrong" slot costs nothing** — `eval_n` is 1 in every case and the spread
+across all six cells is 0.6 ms, well inside noise. The reason is Section 10: the RAM
+prompt cache sits underneath the slots and rescues any routing decision by restoring the
+state into whichever slot was picked. Slot affinity is only a signal on a server *without*
+that second tier.
+
+So the answer to "should the scheduler use cache affinity?" is **no, use residency**. The
+question that matters is not *which slot* holds a domain but *whether the domain is still
+within the ~74-entry cache at all* — that is the difference between 17 ms and 1397 ms, and
+it is the only cache signal on this server worth scheduling against.
+
+## 13. Action scoring [MEASURED — the cheap method does not work, the affordable one does]
+
+Five candidate actions (`SCALE_UP`, `SCALE_DOWN`, `ROLLBACK`, `HOLD`, `PAGE_ONCALL`)
+against a warm spine.
+
+**(a) One forward pass, read the top-20 first-token distribution — 20 ms, and it fails.**
+The returned distribution is dominated by formatting tokens, not action tokens:
+
+```
+   0  ' '        p=0.1518      5  ' d'       p=0.0192
+   1  ' ['       p=0.1401      6  ' p'       p=0.0175
+   2  ' SELECT'  p=0.0405      7  ' Choose'  p=0.0175
+   3  ' <'       p=0.0302      8  ' Select'  p=0.0161
+   4  ' action'  p=0.0281      9  ' "'       p=0.0120
+```
+
+**Zero of the five actions are reachable from the top-20 first tokens.** A 2B model at
+this prompt is still deciding on syntax at the first position, so first-token logprobs are
+not a usable action score. This would have been an easy thing to assume works.
+
+**(b) Score each action explicitly — 130 ms for five, and it does work.**
+
+| action | eval | reused | latency |
+|---|---|---|---|
+| SCALE_UP | 3 | 1518 | 30.2 ms |
+| SCALE_DOWN | 1 | 1520 | 20.1 ms |
+| ROLLBACK | 3 | 1518 | 30.0 ms |
+| HOLD | 1 | 1518 | 19.6 ms |
+| PAGE_ONCALL | 4 | 1518 | 30.4 ms |
+
+Every candidate reuses the full spine and evaluates only its own 1-4 token suffix, so
+**K-way scoring costs K short suffix evals, not K prefills** — ~26 ms per candidate. That
+is the whole reason the spine makes scoring affordable: without prefix reuse each of these
+would be a 1.5 s rebuild and a five-way decision would cost 7.5 s instead of 130 ms.
+
+A grammar-constrained single pass would likely also work and is cheaper still, but that
+was not measured here and is not claimed.

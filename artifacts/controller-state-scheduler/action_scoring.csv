@@ -1,0 +1,27 @@
+method,rank,token,logprob,prob,action,eval_n,reused_n,ms
+first_token,0, ,-1.8852,0.151804,,,,
+first_token,1, [,-1.9652,0.140129,,,,
+first_token,2, SELECT,-3.2076,0.040454,,,,
+first_token,3, <,-3.5003,0.030187,,,,
+first_token,4, action,-3.5723,0.028092,,,,
+first_token,5, d,-3.9541,0.019177,,,,
+first_token,6, p,-4.0429,0.017546,,,,
+first_token,7, Choose,-4.0471,0.017473,,,,
+first_token,8, Select,-4.1287,0.016104,,,,
+first_token,9," """,-4.421,0.012022,,,,
+first_token,10," 
+",-4.7905,0.008308,,,,
+first_token,11, \,-4.8157,0.008102,,,,
+first_token,12, I,-4.8764,0.007624,,,,
+first_token,13, Action,-4.965,0.006978,,,,
+first_token,14, (,-5.0834,0.006199,,,,
+first_token,15, n,-5.1141,0.006011,,,,
+first_token,16, {,-5.1155,0.006003,,,,
+first_token,17, select,-5.1156,0.006002,,,,
+first_token,18, choose,-5.3768,0.004622,,,,
+first_token,19, a,-5.409,0.004476,,,,
+full_action,,,,,SCALE_UP,3,1518,30.2
+full_action,,,,,SCALE_DOWN,1,1520,20.1
+full_action,,,,,ROLLBACK,3,1518,30.0
+full_action,,,,,HOLD,1,1518,19.6
+full_action,,,,,PAGE_ONCALL,4,1518,30.4
