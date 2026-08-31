@@ -1,0 +1,51 @@
+{
+  "artifacts": [
+    {
+      "role": "GEMM",
+      "path": "artifacts/xclbin-tuned/mm_M1024_K2560_N2560.xclbin",
+      "bytes": 109022,
+      "sha256": "363319183d5a442eeaa9fd2b2c96f3e9df080ff1fe91a1f65119f96c310cb1e7"
+    },
+    {
+      "role": "GEMM",
+      "path": "artifacts/xclbin-tuned/mm_M1024_K2560_N2560.insts.bin",
+      "bytes": 5520,
+      "sha256": "0cdea8e2932e04affe846293a8d3c30285a33fa5fc29ea1b74c66f7ac07abc24"
+    },
+    {
+      "role": "MHA",
+      "path": "<build>/MHA_h40_s2048_d64_kv10_npu2.xclbin",
+      "bytes": 133246,
+      "sha256": "7c3726f1bcd4d5e87123a4abc026f2f0eb732f758f9cd3866e467501b531292f"
+    },
+    {
+      "role": "MHA",
+      "path": "<build>/MHA_h40_s2048_d64_kv10_npu2.bin",
+      "bytes": 132176,
+      "sha256": "eb867698602b4e1b9f77b0cdde47bd3d47bc6abc9ba8276ba795928d481b2339"
+    }
+  ],
+  "gemm_mkn": [
+    1024,
+    2560,
+    2560
+  ],
+  "seq": 2048,
+  "heads": 40,
+  "kv_heads": 10,
+  "pipes": 8,
+  "cycles": 40,
+  "gemm_alone_ms": 0.984,
+  "gemm_alt_ms": 3.4607,
+  "mha_alone_ms": 39.0598,
+  "mha_alt_ms": 40.9034,
+  "gemm_alone_sd": 0.0076,
+  "mha_alone_sd": 0.0275,
+  "gemm_alt_sd": 0.0164,
+  "mha_alt_sd": 0.0271,
+  "pair_alone_ms": 40.0438,
+  "pair_alt_ms": 44.3641,
+  "incremental_pair_ms": 4.3203,
+  "prefill_tax_1pair_per_layer_ms": 129.6,
+  "prefill_tax_2pair_per_layer_ms": 259.2
+}
