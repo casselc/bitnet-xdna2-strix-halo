@@ -57,17 +57,35 @@
 (let [args (into {} (map vec (partition 2 (map read-string *command-line-args*))))
       secs (get args 'secs 30)
       t0   (System/nanoTime)
-      deadline (+ t0 (* secs 1e9))]
-  (loop [n 0 lat (transient [])]
-    (if (< (System/nanoTime) deadline)
+      deadline (+ t0 (* secs 1e9))
+      lat  (atom (transient []))
+      done (atom false)
+      report
+      (fn []
+        (when (compare-and-set! done false true)
+          (let [l (sort (persistent! @lat))
+                c (count l)
+                wall (/ (- (System/nanoTime) t0) 1e9)
+                pct (fn [p] (if (zero? c) 0 (nth l (min (dec c) (int (* p c))))))]
+            (println (format (str "{\"ops\": %d, \"wall_s\": %.2f, \"ops_per_s\": %.1f, "
+                                  "\"p50_ms\": %.3f, \"p95_ms\": %.3f, \"p99_ms\": %.3f}")
+                             c wall (if (pos? wall) (/ c wall) 0.0)
+                             (double (pct 0.50)) (double (pct 0.95))
+                             (double (pct 0.99))))
+            (flush))))]
+  ;; The measurement window must match the load window: the driver starts this
+  ;; tenant with the load and stops it when the load ends. Without a shutdown
+  ;; hook the summary is lost on SIGTERM, which is exactly what happened on the
+  ;; first attempt -- and a fixed-duration tenant that outlives the benchmark is
+  ;; what made power incomparable in the previous pass. So: run until signalled,
+  ;; and report from the hook.
+  (.addShutdownHook (Runtime/getRuntime) (Thread. ^Runnable report))
+  (loop [n 0]
+    (if (and (not @done) (< (System/nanoTime) deadline))
       (let [s (System/nanoTime)
             ok (one-op n)
             e (System/nanoTime)]
         (when-not ok (binding [*out* *err*] (println "INVARIANT FAILED at" n)))
-        (recur (inc n) (conj! lat (/ (- e s) 1e6))))
-      (let [lat (sort (persistent! lat))
-            c (count lat)
-            wall (/ (- (System/nanoTime) t0) 1e9)
-            pct (fn [p] (nth lat (min (dec c) (int (* p c))) 0))]
-        (println (format "{\"ops\": %d, \"wall_s\": %.2f, \"ops_per_s\": %.1f, \"p50_ms\": %.3f, \"p95_ms\": %.3f}"
-                         c wall (/ c wall) (double (pct 0.50)) (double (pct 0.95))))))))
+        (swap! lat conj! (/ (- e s) 1e6))
+        (recur (inc n)))
+      (report))))

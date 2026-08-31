@@ -301,6 +301,44 @@ def drive(make_req, n, concurrency):
     return out, time.time() - t0
 
 
+def start_verifier():
+    """Launch the control-plane tenant for the duration of a load window.
+
+    Started with a generous limit and STOPPED when the load finishes, so its
+    measurement window matches the load exactly. The previous pass ran a fixed
+    25 s tenant that outlived the benchmark and made average power
+    incomparable; that mistake is not repeated."""
+    import subprocess
+    return dict(t0=time.time(),
+                proc=subprocess.Popen(
+                    ["bb", str(REPO / "tools" / "cpu_tenant.clj"),
+                     "secs", "100000"],
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                    stdin=subprocess.DEVNULL, text=True, cwd=str(REPO),
+                    start_new_session=True))
+
+
+def stop_verifier(v):
+    """SIGINT so babashka runs its shutdown and prints the summary line; the
+    tenant loop is deadline-based, so a hard kill would lose the numbers."""
+    import signal, os as _os
+    p = v["proc"]
+    try:
+        _os.killpg(_os.getpgid(p.pid), signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        out = p.communicate(timeout=20)[0] or ""
+    except Exception:
+        p.kill(); out = ""
+    line = next((l for l in out.splitlines()
+                 if l.strip().startswith("{") and "ops_per_s" in l), None)
+    if not line:
+        return {"verifier": "no-output"}
+    d = json.loads(line)
+    return {f"verifier_{k}": v2 for k, v2 in d.items()}
+
+
 def write_rows(path, rows):
     if not rows:
         return
@@ -356,6 +394,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("mode", choices=["baseline", "concurrency", "chain",
                                      "mixed", "soak"])
+    ap.add_argument("--mix", default="C:1",
+                    help="request-class mixture, e.g. C:1,CW:1 or C:1,CW:2,W:1")
+    ap.add_argument("--verifier", action="store_true",
+                    help="run the Clojure/SCI control-plane tenant DURING the "
+                         "load window, sized to the load rather than a fixed "
+                         "wall time -- a fixed-duration tenant outliving the "
+                         "benchmark is what made power incomparable last pass")
+    ap.add_argument("--soak-s", type=int, default=1800)
     ap.add_argument("--threads", type=int, default=6)
     ap.add_argument("--conc", type=int, nargs="+", default=[1])
     ap.add_argument("--n", type=int, default=8)
@@ -409,6 +455,45 @@ def main():
             out.append(rec)
             print(f"  chain t{a.threads} c={c} chain p50={rec.get('chain_ms_p50')} "
                   f"p95={rec.get('chain_ms_p95')} {rec['watts']}W", flush=True)
+
+    elif a.mode in ("mixed", "soak"):
+        classes = []
+        for part in a.mix.split(","):
+            name, _, w = part.partition(":")
+            classes += [name.strip()] * int(w or 1)
+
+        def make(i, cc):
+            cls = classes[i % len(classes)]
+            if cls == "C":
+                return run_controller(f"C{i}", a.threads, cc, a.ctrl_predict, prompt)
+            if cls == "W":
+                return run_worker(f"W{i}", cc, a.work_predict)
+            return run_chain(f"CW{i}", a.threads, cc, a.ctrl_predict,
+                             a.work_predict, prompt)
+
+        for c in a.conc:
+            ver = None
+            if a.verifier:
+                ver = start_verifier()
+            rec, rows = cell(f"{a.mode}-t{a.threads}-c{c}-[{a.mix}]", make,
+                             a.n, c, a.lease_csv, jsonl, a.threads)
+            if ver:
+                rec.update(stop_verifier(ver))
+            rec["mix"] = a.mix
+            # Per-class distributions: an aggregate hides which class suffered.
+            for cls in sorted(set(classes)):
+                sub = [r for r in rows if r["cls"] == cls and not r.get("err")]
+                if not sub:
+                    continue
+                rec[f"{cls}_n"] = len(sub)
+                for k in ("total_ms", "ttft_ms", "queue_ms", "chain_ms"):
+                    for kk, vv in summarize(sub, k).items():
+                        rec[f"{cls}_{kk}"] = vv
+            out.append(rec)
+            print(f"  {a.mode} t{a.threads} c={c} [{a.mix}] req/s={rec['req_per_s']} "
+                  f"total p50={rec.get('total_ms_p50')} p95={rec.get('total_ms_p95')} "
+                  f"{rec['watts']}W ver_ops={rec.get('verifier_ops_per_s')} "
+                  f"ver_p95={rec.get('verifier_p95_ms')}", flush=True)
 
     tagged = f"_{a.tag}" if a.tag else ""
     write_rows(f"{a.outdir}/{a.mode}{tagged}.csv", out)
