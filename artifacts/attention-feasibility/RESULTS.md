@@ -83,14 +83,24 @@ execute the arithmetic -- above all a numerically stable softmax.
 
 QK^T and PV, causal so ~T/2 keys per query, over 20 Q heads and 30 layers:
 
+> **Correction.** The first published version of this table gave 0.101 / 0.403 /
+> 1.611 / 6.049 TFLOP and rates of 1.98-4.36 TFLOPS. Those were MAC counts
+> mislabelled as FLOP -- wrong by 2.5x. The corrected figures are below; the
+> conclusion is unchanged in direction and stronger in magnitude.
+
+`2 x (T x T/2 x 128 x 20 x 30)` MACs for QK^T and PV together, causal so ~T/2
+keys per query, at 2 FLOP per MAC:
+
 | T | attention work | CPU time | **CPU rate** |
 |---:|---:|---:|---:|
-| 512 | 0.101 TFLOP | 50.9 ms | 1.98 TFLOPS |
-| 1024 | 0.403 TFLOP | 165.2 ms | 2.44 TFLOPS |
-| 2048 | 1.611 TFLOP | 602.0 ms | 2.68 TFLOPS |
-| 3968 | 6.049 TFLOP | 1388.0 ms | 4.36 TFLOPS |
+| 512 | 0.040 TFLOP | 50.9 ms | **0.79 TFLOPS** |
+| 1024 | 0.161 TFLOP | 165.2 ms | **0.97 TFLOPS** |
+| 2048 | 0.644 TFLOP | 602.0 ms | **1.07 TFLOPS** |
+| 3968 | 2.418 TFLOP | 1388.0 ms | **1.74 TFLOPS** |
 
 For scale: the same CPU sustains ~10 TFLOPS on the int8 I2_S GEMM, and the NPU
-sustains ~11 TOPS there. Attention runs at 2.0-4.4 TFLOPS on the CPU because it
-is f32/f16 rather than int8, so the headroom is real **if** aie2p can run this
-arithmetic in a format faster than the CPU's f32 path.
+sustains ~11 TOPS there. **Attention runs at 0.79-1.74 TFLOPS on the CPU** --
+roughly a sixth of what the same silicon does on int8 GEMM -- because it is
+f32/f16 and because softmax is not a MAC-bound operation. The headroom is
+therefore large **if** aie2p can run this arithmetic in a faster format with a
+numerically stable softmax. That "if" is the whole experiment.
