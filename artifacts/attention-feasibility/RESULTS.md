@@ -1,5 +1,17 @@
 # Attention on XDNA2: bounded feasibility study
 
+> **Superseded in part by [`FINAL_GATE.md`](FINAL_GATE.md).** Everything below
+> stands as published and nothing in it is rewritten. Four statements need to be
+> read more narrowly than they were written, and `FINAL_GATE.md` section 0 is the
+> correction: the d=64 proxy is FLOP-equivalent but **not** softmax-equivalent;
+> the "perfect 32-core scaling" argument is about occupancy only and does not by
+> itself disprove d=128; the reject is scoped to the existing AMD operator and a
+> straightforward port of it; and the "~4x required improvement" figure was not
+> derived from a burdened budget — freshly derived, break-even needs 2.50x at 2K
+> and 3.16x at 4K. `FINAL_GATE.md` also replaces the surrogate 153 ms
+> context-switch estimate below with a 130 ms measurement on the real
+> GEMM<->MHA pair, and adds the 4K measurement this study was missing.
+
 Answering one question before any integration work:
 
 > For BitNet-2B's **actual** causal-prefill attention shapes on this Strix Halo,

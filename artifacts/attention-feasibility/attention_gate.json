@@ -1,0 +1,67 @@
+{
+  "layers": 30,
+  "transitions_per_layer": 2,
+  "rows": [
+    {
+      "T": 512,
+      "seq_pad": 512,
+      "cpu_attn_ms": 50.9,
+      "switch_pair_ms": 4.3203,
+      "switch_pair_src": 2048,
+      "switch_tax_ms": 129.6,
+      "npu_budget_ms": -78.7,
+      "npu_measured_ms": 141.9,
+      "npu_measured_vs_cpu": 2.787,
+      "optimistic_half_bound_ms": 70.9,
+      "optimistic_plus_tax_ms": 200.5,
+      "optimistic_vs_cpu": 3.94,
+      "survives": false
+    },
+    {
+      "T": 1024,
+      "seq_pad": 1024,
+      "cpu_attn_ms": 165.2,
+      "switch_pair_ms": 4.3203,
+      "switch_pair_src": 2048,
+      "switch_tax_ms": 129.6,
+      "npu_budget_ms": 35.6,
+      "npu_measured_ms": 383.5,
+      "npu_measured_vs_cpu": 2.321,
+      "optimistic_half_bound_ms": 191.7,
+      "optimistic_plus_tax_ms": 321.4,
+      "optimistic_vs_cpu": 1.945,
+      "survives": false
+    },
+    {
+      "T": 2048,
+      "seq_pad": 2048,
+      "cpu_attn_ms": 602.0,
+      "switch_pair_ms": 4.3203,
+      "switch_pair_src": 2048,
+      "switch_tax_ms": 129.6,
+      "npu_budget_ms": 472.4,
+      "npu_measured_ms": 1179.6,
+      "npu_measured_vs_cpu": 1.959,
+      "optimistic_half_bound_ms": 589.8,
+      "optimistic_plus_tax_ms": 719.4,
+      "optimistic_vs_cpu": 1.195,
+      "survives": false
+    },
+    {
+      "T": 3968,
+      "seq_pad": 4096,
+      "cpu_attn_ms": 1388.0,
+      "switch_pair_ms": 4.3242,
+      "switch_pair_src": 3968,
+      "switch_tax_ms": 129.7,
+      "npu_budget_ms": 1258.3,
+      "npu_measured_ms": 3980.7,
+      "npu_measured_vs_cpu": 2.868,
+      "optimistic_half_bound_ms": 1990.3,
+      "optimistic_plus_tax_ms": 2120.1,
+      "optimistic_vs_cpu": 1.527,
+      "survives": false
+    }
+  ],
+  "any_survives": false
+}
