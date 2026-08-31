@@ -1,0 +1,7 @@
+mode,burst,executions,completed,wall_ms,p50_ms,p95_ms,identical_outputs,coalesced
+server-queue,2,2,2,1196.4,1196.06,1196.06,1,
+singleflight,2,1,2,568.5,568.29,568.29,1,1
+server-queue,4,4,4,4131.5,4130.61,4131.33,0,
+singleflight,4,1,4,570.3,569.93,570.02,1,3
+server-queue,8,8,8,9005.5,8960.21,9003.99,0,
+singleflight,8,1,8,570.0,569.05,569.54,1,7

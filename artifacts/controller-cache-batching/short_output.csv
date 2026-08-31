@@ -1,0 +1,5 @@
+variant,n_predict,gen_n_p50,gen_ms_p50,total_ms_p50,ttft_ms_p50
+A 32-token prose,32,32,524.0,544.36,33.28
+B action only (4 tok),4,4,50.21,70.37,29.74
+C JSON grammar,12,11,214.41,239.83,42.29
+D single token,1,1,0.0,20.09,17.13
