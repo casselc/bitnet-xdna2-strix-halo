@@ -18,7 +18,7 @@ RT_CXX  := runtime/xdna_gemm.cpp
 all: $(BUILD)/test_i2s_packing $(BUILD)/test_coordinates \
      $(BUILD)/test_i2s_realdata $(BUILD)/test_xdna_gemm \
      $(BUILD)/npu_probe $(BUILD)/npu_gemm_bench $(BUILD)/npu_switch_cost \
-     $(BUILD)/test_xdna_shapes
+     $(BUILD)/test_xdna_shapes $(BUILD)/test_xdna_concurrent
 
 $(BUILD):
 	@mkdir -p $(BUILD)
@@ -33,9 +33,12 @@ $(BUILD)/test_coordinates: tests/test_coordinates.c runtime/bitnet_coord.c | $(B
 
 # --- NPU required ---------------------------------------------------------
 $(BUILD)/test_xdna_gemm: tests/test_xdna_gemm.cpp $(RT_CXX) runtime/bitnet_i2s.c | $(BUILD)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(XRTINC) $(XRTLIB) -lm
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(XRTINC) $(XRTLIB) -lm -lpthread
 $(BUILD)/test_xdna_shapes: tests/test_xdna_shapes.cpp runtime/bitnet_xdna.cpp $(RT_CXX) runtime/bitnet_i2s.c | $(BUILD)
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(XRTINC) $(XRTLIB) -lm
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(XRTINC) $(XRTLIB) -lm -lpthread
+
+$(BUILD)/test_xdna_concurrent: tests/test_xdna_concurrent.cpp runtime/bitnet_xdna.cpp $(RT_CXX) runtime/bitnet_i2s.c | $(BUILD)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(XRTINC) $(XRTLIB) -lm -lpthread
 $(BUILD)/npu_probe: tools/npu_probe.cpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(XRTINC) $(XRTLIB)
 $(BUILD)/npu_gemm_bench: tools/npu_gemm_bench.cpp $(RT_CXX) | $(BUILD)
@@ -68,11 +71,13 @@ $(SHAPE_TENSORS): $(GGUF)
 	.venv/bin/python tools/gguf_extract.py $(GGUF) blk.0.ffn_gate.weight artifacts/correctness/tensors/ffn_gate_l0
 	.venv/bin/python tools/gguf_extract.py $(GGUF) blk.0.ffn_down.weight artifacts/correctness/tensors/ffn_down_l0
 
-check-npu: $(BUILD)/test_xdna_gemm $(BUILD)/test_xdna_shapes $(TENSOR) $(SHAPE_TENSORS)
+check-npu: $(BUILD)/test_xdna_gemm $(BUILD)/test_xdna_shapes $(BUILD)/test_xdna_concurrent $(TENSOR) $(SHAPE_TENSORS)
 	@echo "=== NPU tests ==="
 	@$(BUILD)/test_xdna_gemm
 	@echo
 	@BITNET_XDNA=1 BITNET_XDNA_ARTIFACTS=$(CURDIR)/artifacts/xclbin-tuned $(BUILD)/test_xdna_shapes
+	@echo
+	@BITNET_XDNA=1 BITNET_XDNA_ARTIFACTS=$(CURDIR)/artifacts/xclbin-tuned $(BUILD)/test_xdna_concurrent
 
 # --- patch reproducibility ------------------------------------------------
 # patches/001-bitnet-xdna.patch has silently gone stale more than once, which

@@ -23,6 +23,16 @@ extern "C" {
  * missing artifacts, BITNET_XDNA unset). Never throws into C. */
 int bitnet_xdna_available(void);
 
+/* Single-flight lease over one NPU invocation's whole lifetime:
+ *   begin() -> accumulate() -> [barrier] -> epilogue() on all threads
+ *            -> [barrier] -> end()
+ * Taken by the thread that drives the device; released only once every CPU
+ * reader of that invocation's output has finished. Required because the epilogue
+ * consumes process-global state (output-slot plan, accumulator, shape identity)
+ * that a second inference context would otherwise overwrite mid-read. */
+void bitnet_xdna_invocation_begin(void);
+void bitnet_xdna_invocation_end(void);
+
 /* Can this (K,N) be served? Shapes are fixed by the AOT-compiled xclbins. */
 int bitnet_xdna_supports(int64_t K, int64_t N);
 

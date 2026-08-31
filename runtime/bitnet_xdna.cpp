@@ -98,6 +98,31 @@ xdna::Program *program_for(const std::string &stem, int64_t K, int64_t n_chunk) 
 }
 
 std::mutex g_mu;
+/* Single-flight XDNA invocation lease.
+ *
+ * accumulate() publishes process-global state -- g_direct (which output slots
+ * hold this tensor's results), g_acc, g_cur_shape -- and then RETURNS. The
+ * epilogue reads that state afterwards, on every ggml worker thread, holding no
+ * lock. Within one graph execution the ggml barrier orders the two. Across two
+ * independent inference contexts in one process it orders nothing: context B can
+ * enter accumulate and overwrite g_direct and reuse the same output slots while
+ * context A's workers are still reading them.
+ *
+ * The lease makes the whole accumulate -> barrier -> epilogue -> barrier
+ * lifetime single-flight. It is taken by the thread that drives the NPU and
+ * released only after every CPU reader of that invocation has finished, which
+ * the caller signals by calling end() after its final barrier.
+ *
+ * The lease is the same mutex accumulate would otherwise take, so a leased
+ * caller must not re-lock it; t_lease records that this thread already holds it.
+ * CPU-only contexts never enter this path and are unaffected. */
+thread_local bool t_lease = false;
+/* One-time availability/config resolution has its OWN mutex, deliberately not
+ * g_mu. Sharing it deadlocked: a worker thread still inside its first
+ * bitnet_xdna_available() call blocks on g_mu once thread 0 has taken the
+ * invocation lease, while thread 0 waits at the ggml barrier for exactly that
+ * worker to arrive. Measured as a hard hang at pp2048. */
+std::mutex g_init_mu;
 /* Accumulator staging for the split accumulate/epilogue path. Grown on demand
  * and reused; the NPU is single-tenant so one buffer suffices. */
 std::vector<int32_t> g_acc;
@@ -398,6 +423,16 @@ static void print_stats_atexit(void) {
     }
 }
 
+void bitnet_xdna_invocation_begin(void) {
+    g_mu.lock();
+    t_lease = true;
+}
+
+void bitnet_xdna_invocation_end(void) {
+    t_lease = false;
+    g_mu.unlock();
+}
+
 int bitnet_xdna_available(void) {
     // Hot path: every I2_S mul_mat on every thread calls this. Taking a mutex
     // here measurably slowed the CPU-only path (pp512 1277 -> 878 t/s), which
@@ -406,7 +441,7 @@ int bitnet_xdna_available(void) {
     const int cached = g_state_fast.load(std::memory_order_acquire);
     if (cached >= 0) return cached;
 
-    std::lock_guard<std::mutex> lock(g_mu);
+    std::lock_guard<std::mutex> lock(g_init_mu);
     if (g_state >= 0) { g_state_fast.store(g_state, std::memory_order_release); return g_state; }
     g_state = 0;
     if (!env_truthy("BITNET_XDNA")) { g_state_fast.store(0, std::memory_order_release); return 0; }
@@ -488,7 +523,9 @@ int bitnet_xdna_mul_mat(const void *src0_i2s, int64_t K, int64_t N,
 int bitnet_xdna_accumulate(const void *src0_i2s, int64_t K, int64_t N,
                            const int8_t *a_q, int64_t T, size_t a_row_stride) {
     try {
-        std::lock_guard<std::mutex> lock(g_mu);
+        /* Already held when the caller took an invocation lease. */
+        std::unique_lock<std::mutex> lock(g_mu, std::defer_lock);
+        if (!t_lease) lock.lock();
         Resident *res = get_resident_logged(src0_i2s, K, N);
         if (!res) return 0;
         const ShapePlan plan = res->plan;
