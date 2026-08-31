@@ -179,3 +179,112 @@ never written back to the authoritative log.
 
 So forking is safe: speculative branches leave no residue in the authority, and the
 spine after forking is byte-identical to a spine that never forked.
+
+## 8. Pre-warming [MEASURED]
+
+`tools/prewarm_memo.py`. Four arms, each measuring the *query* TTFT after the spine has
+(or has not) been placed in a slot ahead of time.
+
+| arm | query TTFT | prewarm cost | notes |
+|---|---|---|---|
+| A — cold, no prewarm | 2665 ms | — | baseline |
+| B — prewarmed spine | **34 ms** | 2507 ms | 78x faster query |
+| C — prewarmed, GPU tenant active | 89 ms | 4057 ms | 100.8 W package |
+| D — prewarmed, verifier tenant active | 33 ms | — | verifier held 1230 ops/s, p95 1.196 ms, p99 1.554 ms |
+
+Prewarming moves the cost, it does not remove it: arm B pays 2507 ms up front to save
+2631 ms at query time. That is only a win when the prewarm can be issued during idle
+time that would otherwise be wasted — which is exactly the controller's duty cycle, and
+is the case the state spine creates.
+
+Co-tenancy degrades prewarm but not the warm query. Under GPU load the *prewarm* slows
+1.6x (2507 -> 4057 ms) because it is real prefill competing for memory bandwidth, while
+the warm query only moves 34 -> 89 ms. Under the CPU verifier the warm query is
+unaffected (33 ms) and the verifier keeps full throughput. This matches the tri-device
+result from the previous branch: the contended resource is bandwidth during prefill, not
+the NPU and not the decode path.
+
+## 9. Memoization [MEASURED — 8/8 invalidation cases correct]
+
+`tools/prewarm_memo.py`. The memo key is the full tuple
+`(model, tokenizer, tenant, authority, policy_version, state_version, objective,
+tool_schema, grammar, temperature, seed, max_tokens)`.
+
+All eight cases pass: a repeat with an identical key hits, and a change to *any* of
+objective, state version, policy version, authority, tenant, or grammar misses. The two
+identity fields — `tenant` and `authority` — are part of the key precisely so that a
+token-prefix match can never by itself produce a reuse across a security domain
+(Task 14). Prefix similarity is necessary for reuse but never sufficient; the key is
+checked first.
+
+## 10. Residency: how many warm state domains actually fit [MEASURED]
+
+This started as an anomaly. A warm domain survived **20 other domains passing through an
+8-slot server** and still came back with `eval=1`, which no slot-LRU model explains. The
+first sweep made it worse: 8, 16, 32 and then 48 distinct domains all came back 100%
+warm, with RSS completely flat.
+
+**Mechanism, read from the pinned source.** Residency is not bounded by slots. There is a
+second tier — `server_prompt_cache` (`server-task.cpp`), enabled by default with
+`--cache-ram 8192` (MiB), which this controller runs with since it never passes the flag:
+
+- `slot::prompt_save` copies a displaced slot's sequence state into the cache
+  (`llama_state_seq_get_data_ext`).
+- `slot::prompt_load` restores it and then `states.erase(it_best)` — the state is **moved
+  out** of the cache, and `data.clear(); data.shrink_to_fit()` returns the pages.
+- `server_prompt_cache::update()` evicts with `states.pop_front()` — plain LRU — against
+  `limit_size` (8192 MiB) and `limit_tokens` (= `n_ctx`), where
+  `limit_tokens_cur = max(limit_tokens, limit_size/size_per_token)`, so at our state size
+  both limits collapse to the same ~8 GiB budget.
+
+So the cache holds roughly *(domains visited − slots)* states, and RSS stays flat because
+every load frees exactly what the next save allocates. **Slot count sets concurrency;
+`--cache-ram` sets residency.** These are independent, and only the second one answers
+"how many warm domains fit".
+
+**Capacity, measured.** Predicted knee: 8192 MiB / ~110 MiB per 1491-token state ≈ 74.
+Warm 128 distinct domains, then probe newest-to-oldest (LRU keeps the newest) and stop at
+the first run of misses:
+
+```
+  ..........................................................................XXX
+  74 warm, then a cliff
+  warm TTFT median   26 ms
+  cold TTFT median 1397 ms
+```
+
+**74 domains.** The implied per-state size is 8192 MiB / 74 = **111 MiB = 76.0 KiB/token**,
+against **75.0 KiB/token** derived independently from the model geometry
+(5 KV heads x 128 head_dim x 30 layers x 2 for K and V x 2 bytes f16). The two agree to
+1.3%, so the capacity is fully explained by KV size and the RAM budget — there is nothing
+unaccounted for.
+
+**The knee is a cliff, not a slope: 26 ms -> 1397 ms, 54x, with no middle ground.**
+
+### The failure mode that matters more than the capacity
+
+The first attempt to measure this probed the 128 domains **in the order they were warmed**
+and reported `0 / 128` warm. That number is real but it is not an eviction measurement —
+it is LRU thrash. Revisiting an evicted domain rebuilds it and pushes a state in, which
+`pop_front`s the entry that was about to be visited next. A cyclic scan over a working set
+larger than the cache therefore degrades to a **0% hit rate**, not to a partial one, and
+per-request latency fell from 26 ms to ~13 s while the controller burned 7.6 cores.
+
+That is the honest operational warning: **exceeding cache capacity does not cost you a
+proportional share of your hits, it can cost you all of them.** The reverse-order probe
+above exists specifically because the forward probe destroys the evidence it is trying to
+collect.
+
+### Consequences
+
+- ~74 concurrent warm state domains at ~1500 tokens each, on the default 8192 MiB budget.
+  It scales linearly in `--cache-ram` and inversely in spine length — a 3000-token spine
+  halves it to ~37.
+- Residency is **tunable**: `--cache-ram` is the knob, and this box has 122 GiB, so a much
+  larger budget is available if the working set demands it. It was not raised here because
+  the brief's question was what the current configuration does.
+- Admission control matters more than cache size. Because the degradation is a cliff and a
+  cyclic pattern zeroes the hit rate, a scheduler should refuse or defer work that would
+  push the working set past capacity rather than let it thrash. That is a real finding
+  about *this* server's fixed model, exactly the bottleneck the brief asked to be recorded
+  if it appeared. **It appeared.**
