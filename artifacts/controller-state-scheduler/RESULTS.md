@@ -132,3 +132,50 @@ two logits are near-tied. It is not a correctness failure of the batching path.
 *(The base model copies its own tag only 7 times in 32. That weakens it as a
 positive control but not as a contamination detector: the question is whether a
 foreign tag ever appears, and it never does.)*
+
+## 5. Micro-batch coalescing window [DEFERRED — gated task, gate did not open]
+
+Task 5 was conditional on Task 3 showing that aggregate XDNA batching wins. Section 3
+measured the opposite: distinct suffixes *do* coalesce into a large enough `ne11` to
+re-engage the NPU, and doing so is slower than letting them stay on the CPU. A
+coalescing window can only increase the amount of work steered into that losing path,
+so it was not built. Reopen only if the Section 3 result reverses.
+
+## 6. The state spine [MEASURED]
+
+`tools/state_spine.py`. An `Authoritative` object holds an append-only event log and
+derives a monotonic `version()`. The *spine* is the long canonical prefix built from
+that log; a *query* is a short suffix appended to it. Three regimes over 50 turns:
+
+| regime | eval/turn | reused/turn | TTFT p50 | total p50 |
+|---|---|---|---|---|
+| A — rebuild the whole prompt each turn | 2328 | 0 | 3023 ms | — |
+| B — spine reuse, append query only | **28** | 2084 | **147 ms** | — |
+| C — rebase every 10 turns | 28 | 2084 | 147 ms | 122 ms |
+| C — rebase every 25 turns | 28 | 2084 | 145 ms | 130 ms |
+
+Spine reuse removes **98.8% of prefill token work** (2328 -> 28 evaluated tokens per
+turn) and cuts TTFT **20.6x**. Rebase cadence between 10 and 25 turns is not
+distinguishable at this scale — the rebase itself is amortized over enough turns that
+its cost disappears into the noise.
+
+Note the direction this pushes the NPU question: regime A evaluates 2328 tokens per
+turn, comfortably above `kMTile = 1024`, so it offloads. Regime B evaluates 28, far
+below, so it never does. **The winning configuration is the one that keeps the NPU
+idle.** This is the same tension recorded in the previous branch, now measured on the
+stateful path rather than the stateless one.
+
+## 7. Ephemeral query forks [MEASURED — 4/4 invariants hold]
+
+`tools/state_spine.py`, Task 8. A fork is a throwaway continuation of the spine that is
+never written back to the authoritative log.
+
+| invariant | result |
+|---|---|
+| forks do not change the authoritative version | PASS |
+| an authoritative delta *does* change the version | PASS |
+| the projection equals an independent replay of S+D | PASS |
+| a post-fork query matches a fresh-replay query | PASS |
+
+So forking is safe: speculative branches leave no residue in the authority, and the
+spine after forking is byte-identical to a spine that never forked.

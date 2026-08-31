@@ -1,0 +1,9 @@
+case,hit,expected_hit,correct
+first call (populate),0,0,1
+same everything,1,1,1
+different objective,0,0,1
+changed state version,0,0,1
+changed policy version,0,0,1
+changed authority,0,0,1
+different tenant,0,0,1
+different grammar,0,0,1
