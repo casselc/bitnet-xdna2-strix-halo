@@ -435,14 +435,116 @@ static void print_stats_atexit(void) {
     }
 }
 
+/* --- single-flight lease instrumentation -------------------------------------
+ *
+ * The lease serialises whole NPU invocations. Under a multi-request service that
+ * makes it the one point where concurrent controller requests must queue, so the
+ * service question "is controller latency dominated by waiting for the NPU?" is
+ * answered here or nowhere.
+ *
+ * Off by default and gated on a relaxed atomic bool resolved once, so a
+ * disabled build path costs one predictable load and no clock reads. try_lock()
+ * first separates an UNCONTENDED acquisition (the common case, and the one that
+ * must stay cheap) from a contended one, and only the contended path pays for
+ * timing. */
+std::atomic<bool>     g_lease_stats{false};
+std::atomic<uint64_t> g_lease_acq{0};        // total acquisitions
+std::atomic<uint64_t> g_lease_immediate{0};  // uncontended (try_lock succeeded)
+std::atomic<uint64_t> g_lease_waited{0};     // had to block
+std::atomic<uint64_t> g_lease_wait_ns{0};    // summed blocked time
+std::atomic<uint64_t> g_lease_hold_ns{0};    // summed held time
+std::atomic<uint64_t> g_lease_wait_max_ns{0};
+std::atomic<uint64_t> g_lease_hold_max_ns{0};
+std::atomic<int>      g_lease_waiters{0};    // currently blocked
+std::atomic<int>      g_lease_waiters_max{0};
+thread_local uint64_t t_lease_t0 = 0;
+/* A long-lived server needs the counters DURING operation, not only at exit.
+ * Snapshots are appended from the invocation path itself rather than from a
+ * background thread, so nothing new is scheduled and there is no teardown
+ * ordering to get wrong. Every kDumpEvery-th release writes one line; the
+ * orchestrator differences consecutive lines to get a per-window rate. */
+FILE                 *g_lease_csv = nullptr;
+std::atomic<uint64_t> g_lease_dump_ctr{0};
+uint64_t              g_lease_dump_every = 128;   /* BITNET_XDNA_LEASE_EVERY */
+
+static inline uint64_t now_ns() {
+    return (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+static void bump_max(std::atomic<uint64_t> &m, uint64_t v) {
+    uint64_t cur = m.load(std::memory_order_relaxed);
+    while (v > cur && !m.compare_exchange_weak(cur, v, std::memory_order_relaxed)) {}
+}
+
 void bitnet_xdna_invocation_begin(void) {
-    g_mu.lock();
+    if (!g_lease_stats.load(std::memory_order_relaxed)) {
+        g_mu.lock();
+        t_lease = true;
+        return;
+    }
+    g_lease_acq.fetch_add(1, std::memory_order_relaxed);
+    if (g_mu.try_lock()) {
+        g_lease_immediate.fetch_add(1, std::memory_order_relaxed);
+    } else {
+        const int w = g_lease_waiters.fetch_add(1, std::memory_order_relaxed) + 1;
+        int mw = g_lease_waiters_max.load(std::memory_order_relaxed);
+        while (w > mw && !g_lease_waiters_max.compare_exchange_weak(
+                   mw, w, std::memory_order_relaxed)) {}
+        const uint64_t t0 = now_ns();
+        g_mu.lock();
+        const uint64_t dt = now_ns() - t0;
+        g_lease_waiters.fetch_sub(1, std::memory_order_relaxed);
+        g_lease_waited.fetch_add(1, std::memory_order_relaxed);
+        g_lease_wait_ns.fetch_add(dt, std::memory_order_relaxed);
+        bump_max(g_lease_wait_max_ns, dt);
+    }
+    t_lease_t0 = now_ns();
     t_lease = true;
 }
 
 void bitnet_xdna_invocation_end(void) {
     t_lease = false;
+    if (g_lease_stats.load(std::memory_order_relaxed) && t_lease_t0) {
+        const uint64_t dt = now_ns() - t_lease_t0;
+        g_lease_hold_ns.fetch_add(dt, std::memory_order_relaxed);
+        bump_max(g_lease_hold_max_ns, dt);
+        t_lease_t0 = 0;
+        /* Written while the lease is still HELD, so lines cannot interleave. */
+        if (g_lease_csv &&
+            (g_lease_dump_ctr.fetch_add(1, std::memory_order_relaxed) + 1)
+                % g_lease_dump_every == 0) {
+            struct bitnet_xdna_lease_stats st;
+            bitnet_xdna_lease_snapshot(&st);
+            std::fprintf(g_lease_csv,
+                "%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%d,%d\n",
+                (unsigned long long)std::chrono::duration_cast<
+                    std::chrono::nanoseconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count(),
+                st.acquisitions, st.immediate, st.waited, st.wait_ns,
+                st.hold_ns, st.wait_max_ns, st.hold_max_ns,
+                st.waiters_now, st.waiters_max);
+            std::fflush(g_lease_csv);
+        }
+    }
     g_mu.unlock();
+}
+
+void bitnet_xdna_lease_snapshot(struct bitnet_xdna_lease_stats *o) {
+    if (!o) return;
+    o->acquisitions = g_lease_acq.load(std::memory_order_relaxed);
+    o->immediate    = g_lease_immediate.load(std::memory_order_relaxed);
+    o->waited       = g_lease_waited.load(std::memory_order_relaxed);
+    o->wait_ns      = g_lease_wait_ns.load(std::memory_order_relaxed);
+    o->hold_ns      = g_lease_hold_ns.load(std::memory_order_relaxed);
+    o->wait_max_ns  = g_lease_wait_max_ns.load(std::memory_order_relaxed);
+    o->hold_max_ns  = g_lease_hold_max_ns.load(std::memory_order_relaxed);
+    o->waiters_now  = g_lease_waiters.load(std::memory_order_relaxed);
+    o->waiters_max  = g_lease_waiters_max.load(std::memory_order_relaxed);
+}
+
+int bitnet_xdna_lease_stats_enabled(void) {
+    return g_lease_stats.load(std::memory_order_relaxed) ? 1 : 0;
 }
 
 int bitnet_xdna_available(void) {
@@ -458,6 +560,22 @@ int bitnet_xdna_available(void) {
     g_state = 0;
     if (!env_truthy("BITNET_XDNA")) { g_state_fast.store(0, std::memory_order_release); return 0; }
     if (env_truthy("BITNET_XDNA_STATS")) std::atexit(print_stats_atexit);
+    if (env_truthy("BITNET_XDNA_LEASE_STATS"))
+        g_lease_stats.store(true, std::memory_order_relaxed);
+    if (const char *le = std::getenv("BITNET_XDNA_LEASE_EVERY")) {
+        const long v = std::strtol(le, nullptr, 10);
+        if (v > 0) g_lease_dump_every = (uint64_t)v;
+    }
+    if (const char *lp = std::getenv("BITNET_XDNA_LEASE_CSV")) {
+        g_lease_csv = std::fopen(lp, "w");
+        if (g_lease_csv) {
+            std::fprintf(g_lease_csv,
+                "wall_ns,acquisitions,immediate,waited,wait_ns,hold_ns,"
+                "wait_max_ns,hold_max_ns,waiters_now,waiters_max\n");
+            std::fflush(g_lease_csv);
+            g_lease_stats.store(true, std::memory_order_relaxed);
+        }
+    }
     g_async = env_truthy("BITNET_XDNA_ASYNC");
     /* Default on; set BITNET_XDNA_DIRECT_OUT=0 to fall back to the g_acc path. */
     if (const char *dv = std::getenv("BITNET_XDNA_DIRECT_OUT"))

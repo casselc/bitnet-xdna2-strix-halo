@@ -33,6 +33,27 @@ int bitnet_xdna_available(void);
 void bitnet_xdna_invocation_begin(void);
 void bitnet_xdna_invocation_end(void);
 
+/* Single-flight lease counters, for service-level measurement.
+ *
+ * Enabled by BITNET_XDNA_LEASE_STATS=1; when disabled the lease path costs one
+ * relaxed atomic load and reads no clock. Cumulative since process start, so a
+ * caller measures a window by differencing. Snapshot is not atomic across
+ * fields -- the counters move independently and a torn read only matters at
+ * sub-microsecond granularity, which is far below what is being measured. */
+struct bitnet_xdna_lease_stats {
+    unsigned long long acquisitions;
+    unsigned long long immediate;      /* uncontended */
+    unsigned long long waited;         /* had to block */
+    unsigned long long wait_ns;        /* summed blocked time */
+    unsigned long long hold_ns;        /* summed held time */
+    unsigned long long wait_max_ns;
+    unsigned long long hold_max_ns;
+    int                waiters_now;
+    int                waiters_max;
+};
+void bitnet_xdna_lease_snapshot(struct bitnet_xdna_lease_stats *out);
+int  bitnet_xdna_lease_stats_enabled(void);
+
 /* Can this (K,N) be served? Shapes are fixed by the AOT-compiled xclbins. */
 int bitnet_xdna_supports(int64_t K, int64_t N);
 
