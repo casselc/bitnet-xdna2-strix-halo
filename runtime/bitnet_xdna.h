@@ -52,6 +52,20 @@ struct bitnet_xdna_lease_stats {
     int                waiters_max;
 };
 void bitnet_xdna_lease_snapshot(struct bitnet_xdna_lease_stats *out);
+
+/* Distribution of ne11 -- the token dimension of the batch reaching each I2_S
+ * mul_mat. Answers whether distinct sequences arrive as one large matrix or as
+ * several small ones, which throughput alone cannot distinguish. Enabled by
+ * BITNET_XDNA_NE11_STATS=1; buckets are powers of two, bucket[i] counts calls
+ * with ne11 in [2^i, 2^(i+1)). */
+#define BITNET_XDNA_NE11_BUCKETS 16
+struct bitnet_xdna_ne11_stats {
+    unsigned long long calls;
+    unsigned long long tokens;   /* summed ne11 */
+    unsigned long long max;
+    unsigned long long bucket[BITNET_XDNA_NE11_BUCKETS];
+};
+void bitnet_xdna_ne11_snapshot(struct bitnet_xdna_ne11_stats *out);
 int  bitnet_xdna_lease_stats_enabled(void);
 
 /* Can this (K,N) be served? Shapes are fixed by the AOT-compiled xclbins. */

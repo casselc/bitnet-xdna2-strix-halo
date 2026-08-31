@@ -477,6 +477,18 @@ static void bump_max(std::atomic<uint64_t> &m, uint64_t v) {
     while (v > cur && !m.compare_exchange_weak(cur, v, std::memory_order_relaxed)) {}
 }
 
+std::atomic<bool>     g_ne11_stats{false};
+constexpr int         kNe11Buckets = 16;          /* 1,2,4,...,32768+ */
+std::atomic<uint64_t> g_ne11_hist[kNe11Buckets];
+std::atomic<uint64_t> g_ne11_calls{0};
+std::atomic<uint64_t> g_ne11_tokens{0};
+std::atomic<uint64_t> g_ne11_max{0};
+/* Live readout. The lease CSV cannot serve here: it is written from the lease
+ * release path, which never runs when the NPU is not engaged -- precisely the
+ * case being measured. So the histogram dumps itself from worth_it(). */
+FILE                 *g_ne11_csv = nullptr;
+uint64_t              g_ne11_dump_every = 2048;
+
 void bitnet_xdna_invocation_begin(void) {
     if (!g_lease_stats.load(std::memory_order_relaxed)) {
         g_mu.lock();
@@ -560,6 +572,23 @@ int bitnet_xdna_available(void) {
     g_state = 0;
     if (!env_truthy("BITNET_XDNA")) { g_state_fast.store(0, std::memory_order_release); return 0; }
     if (env_truthy("BITNET_XDNA_STATS")) std::atexit(print_stats_atexit);
+    if (env_truthy("BITNET_XDNA_NE11_STATS"))
+        g_ne11_stats.store(true, std::memory_order_relaxed);
+    if (const char *ne = std::getenv("BITNET_XDNA_NE11_EVERY")) {
+        const long v = std::strtol(ne, nullptr, 10);
+        if (v > 0) g_ne11_dump_every = (uint64_t)v;
+    }
+    if (const char *np2 = std::getenv("BITNET_XDNA_NE11_CSV")) {
+        g_ne11_csv = std::fopen(np2, "w");
+        if (g_ne11_csv) {
+            std::fprintf(g_ne11_csv, "wall_ns,calls,tokens,max");
+            for (int i = 0; i < BITNET_XDNA_NE11_BUCKETS; ++i)
+                std::fprintf(g_ne11_csv, ",b%d", 1 << i);
+            std::fprintf(g_ne11_csv, "\n");
+            std::fflush(g_ne11_csv);
+            g_ne11_stats.store(true, std::memory_order_relaxed);
+        }
+    }
     if (env_truthy("BITNET_XDNA_LEASE_STATS"))
         g_lease_stats.store(true, std::memory_order_relaxed);
     if (const char *le = std::getenv("BITNET_XDNA_LEASE_EVERY")) {
@@ -610,7 +639,54 @@ int bitnet_xdna_supports(int64_t K, int64_t N) {
     ShapePlan p; return plan_for(K, N, &p) ? 1 : 0;
 }
 
-int bitnet_xdna_worth_it(int64_t n_tokens) { return n_tokens >= g_min_tokens; }
+/* --- graph token-dimension histogram --------------------------------------
+ *
+ * worth_it() is called on EVERY I2_S mul_mat with ne11, the token dimension of
+ * the batch that actually reached the graph. That makes it the one honest place
+ * to answer "do several distinct sequences arrive as one large matrix, or as
+ * several small ones?" -- a question no amount of throughput scaling can settle,
+ * because concurrency can scale for reasons that have nothing to do with
+ * batching.
+ *
+ * Buckets are powers of two so a shift from 8x79 separate calls to one 632-token
+ * call is visible as a bucket migration rather than a mean. Off unless
+ * BITNET_XDNA_NE11_STATS is set; when off this costs one relaxed load. */
+int bitnet_xdna_worth_it(int64_t n_tokens) {
+    if (g_ne11_stats.load(std::memory_order_relaxed) && n_tokens > 0) {
+        int b = 0;
+        for (int64_t v = n_tokens; v > 1 && b < kNe11Buckets - 1; v >>= 1) ++b;
+        g_ne11_hist[b].fetch_add(1, std::memory_order_relaxed);
+        g_ne11_calls.fetch_add(1, std::memory_order_relaxed);
+        g_ne11_tokens.fetch_add((uint64_t)n_tokens, std::memory_order_relaxed);
+        bump_max(g_ne11_max, (uint64_t)n_tokens);
+        if (g_ne11_csv) {
+            const uint64_t c = g_ne11_calls.load(std::memory_order_relaxed);
+            if (c % g_ne11_dump_every == 0) {
+                struct bitnet_xdna_ne11_stats st;
+                bitnet_xdna_ne11_snapshot(&st);
+                std::fprintf(g_ne11_csv, "%llu,%llu,%llu,%llu",
+                    (unsigned long long)std::chrono::duration_cast<
+                        std::chrono::nanoseconds>(
+                        std::chrono::system_clock::now().time_since_epoch()).count(),
+                    st.calls, st.tokens, st.max);
+                for (int i = 0; i < BITNET_XDNA_NE11_BUCKETS; ++i)
+                    std::fprintf(g_ne11_csv, ",%llu", st.bucket[i]);
+                std::fprintf(g_ne11_csv, "\n");
+                std::fflush(g_ne11_csv);
+            }
+        }
+    }
+    return n_tokens >= g_min_tokens;
+}
+
+void bitnet_xdna_ne11_snapshot(struct bitnet_xdna_ne11_stats *o) {
+    if (!o) return;
+    o->calls  = g_ne11_calls.load(std::memory_order_relaxed);
+    o->tokens = g_ne11_tokens.load(std::memory_order_relaxed);
+    o->max    = g_ne11_max.load(std::memory_order_relaxed);
+    for (int i = 0; i < kNe11Buckets; ++i)
+        o->bucket[i] = g_ne11_hist[i].load(std::memory_order_relaxed);
+}
 
 int64_t bitnet_xdna_token_split(int64_t n_tokens) {
     if (n_tokens <= 0) return 0;

@@ -74,11 +74,13 @@ case "${1:-}" in
     T=${2:-6}
     stop_pidfile "$RUN/ctrl.pid"
     assert_port_free 8081
-    : > "$RUN/lease.csv"
+    : > "$RUN/lease.csv"; : > "$RUN/ne11.csv"
     BITNET_XDNA=1 BITNET_XDNA_STATS=1 \
     BITNET_XDNA_LEASE_STATS=1 \
     BITNET_XDNA_LEASE_CSV="$RUN/lease.csv" \
     BITNET_XDNA_LEASE_EVERY="${LEASE_EVERY:-32}" \
+    BITNET_XDNA_NE11_CSV="$RUN/ne11.csv" \
+    BITNET_XDNA_NE11_EVERY="${NE11_EVERY:-210}" \
     nohup "$CTRL_BIN" -m "$CTRL_MODEL" -t "$T" -ngl 0 \
         -c "${CTRL_CTX:-20480}" -np "${CTRL_SLOTS:-8}" \
         -ub 2048 -b 2048 --host 127.0.0.1 --port 8081 --no-webui \
