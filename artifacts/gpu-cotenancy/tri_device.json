@@ -1,0 +1,578 @@
+[
+  {
+    "arm": "A  gpu alone",
+    "wall_s": 12.44,
+    "watts": 83.5,
+    "pids": {
+      "worker": 3710361
+    },
+    "gpu_busy_median": 92,
+    "gpu_busy_max": 100,
+    "gtt_gib_max": 57.8,
+    "worker": {
+      "pp512": [
+        290.54,
+        0.0
+      ],
+      "tg64": [
+        12.29,
+        0.0
+      ]
+    },
+    "round": 0
+  },
+  {
+    "arm": "ctrl-npu t4 alone",
+    "wall_s": 15.34,
+    "watts": 60.6,
+    "pids": {
+      "controller": 3710449
+    },
+    "gpu_busy_median": 0,
+    "gpu_busy_max": 87,
+    "gtt_gib_max": 41.28,
+    "controller": {
+      "pp2048": [
+        598.24,
+        0.44
+      ]
+    },
+    "round": 0
+  },
+  {
+    "arm": "ctrl-npu t6 alone",
+    "wall_s": 12.33,
+    "watts": 71.8,
+    "pids": {
+      "controller": 3710527
+    },
+    "gpu_busy_median": 0,
+    "gpu_busy_max": 0,
+    "gtt_gib_max": 41.28,
+    "controller": {
+      "pp2048": [
+        750.37,
+        0.9
+      ]
+    },
+    "round": 0
+  },
+  {
+    "arm": "ctrl-npu t8 alone",
+    "wall_s": 10.94,
+    "watts": 75.9,
+    "pids": {
+      "controller": 3710583
+    },
+    "gpu_busy_median": 0.0,
+    "gpu_busy_max": 0,
+    "gtt_gib_max": 41.28,
+    "controller": {
+      "pp2048": [
+        857.93,
+        3.03
+      ]
+    },
+    "round": 0
+  },
+  {
+    "arm": "B  gpu + ctrl-cpu t8",
+    "wall_s": 15.26,
+    "watts": 114.8,
+    "pids": {
+      "worker": 3710642,
+      "controller": 3710643
+    },
+    "gpu_busy_median": 94,
+    "gpu_busy_max": 100,
+    "gtt_gib_max": 57.8,
+    "worker": {
+      "pp512": [
+        224.08,
+        0.0
+      ],
+      "tg64": [
+        11.35,
+        0.0
+      ]
+    },
+    "controller": {
+      "pp2048": [
+        527.01,
+        25.43
+      ]
+    },
+    "round": 0
+  },
+  {
+    "arm": "C  gpu + ctrl-npu t4",
+    "wall_s": 18.53,
+    "watts": 92.9,
+    "pids": {
+      "worker": 3710752,
+      "controller": 3710753
+    },
+    "gpu_busy_median": 64,
+    "gpu_busy_max": 100,
+    "gtt_gib_max": 57.8,
+    "worker": {
+      "pp512": [
+        250.73,
+        0.0
+      ],
+      "tg64": [
+        11.34,
+        0.0
+      ]
+    },
+    "controller": {
+      "pp2048": [
+        487.93,
+        90.98
+      ]
+    },
+    "round": 0
+  },
+  {
+    "arm": "D  gpu + ctrl-npu t6",
+    "wall_s": 15.76,
+    "watts": 102.4,
+    "pids": {
+      "worker": 3710889,
+      "controller": 3710890
+    },
+    "gpu_busy_median": 88.5,
+    "gpu_busy_max": 100,
+    "gtt_gib_max": 57.8,
+    "worker": {
+      "pp512": [
+        243.44,
+        0.0
+      ],
+      "tg64": [
+        11.14,
+        0.0
+      ]
+    },
+    "controller": {
+      "pp2048": [
+        564.14,
+        97.7
+      ]
+    },
+    "round": 0
+  },
+  {
+    "arm": "E  gpu + ctrl-npu t8",
+    "wall_s": 14.63,
+    "watts": 105.5,
+    "pids": {
+      "worker": 3710997,
+      "controller": 3710998
+    },
+    "gpu_busy_median": 92.5,
+    "gpu_busy_max": 99,
+    "gtt_gib_max": 57.8,
+    "worker": {
+      "pp512": [
+        236.45,
+        0.0
+      ],
+      "tg64": [
+        11.03,
+        0.0
+      ]
+    },
+    "controller": {
+      "pp2048": [
+        599.49,
+        75.36
+      ]
+    },
+    "round": 0
+  },
+  {
+    "arm": "A  gpu alone",
+    "wall_s": 12.27,
+    "watts": 88.4,
+    "pids": {
+      "worker": 3711095
+    },
+    "gpu_busy_median": 94,
+    "gpu_busy_max": 100,
+    "gtt_gib_max": 57.8,
+    "worker": {
+      "pp512": [
+        288.0,
+        0.0
+      ],
+      "tg64": [
+        12.3,
+        0.0
+      ]
+    },
+    "round": 1
+  },
+  {
+    "arm": "ctrl-npu t4 alone",
+    "wall_s": 15.44,
+    "watts": 60.4,
+    "pids": {
+      "controller": 3711183
+    },
+    "gpu_busy_median": 0,
+    "gpu_busy_max": 87,
+    "gtt_gib_max": 41.28,
+    "controller": {
+      "pp2048": [
+        595.25,
+        0.64
+      ]
+    },
+    "round": 1
+  },
+  {
+    "arm": "ctrl-npu t6 alone",
+    "wall_s": 12.49,
+    "watts": 74.5,
+    "pids": {
+      "controller": 3711276
+    },
+    "gpu_busy_median": 0,
+    "gpu_busy_max": 0,
+    "gtt_gib_max": 41.28,
+    "controller": {
+      "pp2048": [
+        738.97,
+        9.01
+      ]
+    },
+    "round": 1
+  },
+  {
+    "arm": "ctrl-npu t8 alone",
+    "wall_s": 10.94,
+    "watts": 76.0,
+    "pids": {
+      "controller": 3711348
+    },
+    "gpu_busy_median": 0.0,
+    "gpu_busy_max": 0,
+    "gtt_gib_max": 41.28,
+    "controller": {
+      "pp2048": [
+        868.24,
+        12.52
+      ]
+    },
+    "round": 1
+  },
+  {
+    "arm": "B  gpu + ctrl-cpu t8",
+    "wall_s": 15.44,
+    "watts": 115.1,
+    "pids": {
+      "worker": 3711394,
+      "controller": 3711395
+    },
+    "gpu_busy_median": 94,
+    "gpu_busy_max": 99,
+    "gtt_gib_max": 57.8,
+    "worker": {
+      "pp512": [
+        221.84,
+        0.0
+      ],
+      "tg64": [
+        11.31,
+        0.0
+      ]
+    },
+    "controller": {
+      "pp2048": [
+        523.64,
+        30.02
+      ]
+    },
+    "round": 1
+  },
+  {
+    "arm": "C  gpu + ctrl-npu t4",
+    "wall_s": 18.53,
+    "watts": 94.6,
+    "pids": {
+      "worker": 3711498,
+      "controller": 3711499
+    },
+    "gpu_busy_median": 63,
+    "gpu_busy_max": 100,
+    "gtt_gib_max": 57.8,
+    "worker": {
+      "pp512": [
+        249.33,
+        0.0
+      ],
+      "tg64": [
+        11.33,
+        0.0
+      ]
+    },
+    "controller": {
+      "pp2048": [
+        490.21,
+        91.61
+      ]
+    },
+    "round": 1
+  },
+  {
+    "arm": "D  gpu + ctrl-npu t6",
+    "wall_s": 15.83,
+    "watts": 101.9,
+    "pids": {
+      "worker": 3711631,
+      "controller": 3711632
+    },
+    "gpu_busy_median": 88.0,
+    "gpu_busy_max": 100,
+    "gtt_gib_max": 57.8,
+    "worker": {
+      "pp512": [
+        242.69,
+        0.0
+      ],
+      "tg64": [
+        11.18,
+        0.0
+      ]
+    },
+    "controller": {
+      "pp2048": [
+        563.99,
+        102.59
+      ]
+    },
+    "round": 1
+  },
+  {
+    "arm": "E  gpu + ctrl-npu t8",
+    "wall_s": 14.51,
+    "watts": 106.7,
+    "pids": {
+      "worker": 3711739,
+      "controller": 3711740
+    },
+    "gpu_busy_median": 96,
+    "gpu_busy_max": 99,
+    "gtt_gib_max": 57.8,
+    "worker": {
+      "pp512": [
+        236.63,
+        0.0
+      ],
+      "tg64": [
+        10.99,
+        0.0
+      ]
+    },
+    "controller": {
+      "pp2048": [
+        604.48,
+        85.4
+      ]
+    },
+    "round": 1
+  },
+  {
+    "arm": "A  gpu alone",
+    "wall_s": 12.75,
+    "watts": 87.3,
+    "pids": {
+      "worker": 3711840
+    },
+    "gpu_busy_median": 92.0,
+    "gpu_busy_max": 100,
+    "gtt_gib_max": 57.8,
+    "worker": {
+      "pp512": [
+        288.5,
+        0.0
+      ],
+      "tg64": [
+        12.29,
+        0.0
+      ]
+    },
+    "round": 2
+  },
+  {
+    "arm": "ctrl-npu t4 alone",
+    "wall_s": 15.38,
+    "watts": 60.5,
+    "pids": {
+      "controller": 3711925
+    },
+    "gpu_busy_median": 0,
+    "gpu_busy_max": 83,
+    "gtt_gib_max": 41.28,
+    "controller": {
+      "pp2048": [
+        598.54,
+        1.09
+      ]
+    },
+    "round": 2
+  },
+  {
+    "arm": "ctrl-npu t6 alone",
+    "wall_s": 12.34,
+    "watts": 71.3,
+    "pids": {
+      "controller": 3712007
+    },
+    "gpu_busy_median": 0,
+    "gpu_busy_max": 0,
+    "gtt_gib_max": 41.28,
+    "controller": {
+      "pp2048": [
+        753.05,
+        2.11
+      ]
+    },
+    "round": 2
+  },
+  {
+    "arm": "ctrl-npu t8 alone",
+    "wall_s": 10.92,
+    "watts": 76.2,
+    "pids": {
+      "controller": 3712061
+    },
+    "gpu_busy_median": 0.0,
+    "gpu_busy_max": 0,
+    "gtt_gib_max": 41.28,
+    "controller": {
+      "pp2048": [
+        869.55,
+        2.84
+      ]
+    },
+    "round": 2
+  },
+  {
+    "arm": "B  gpu + ctrl-cpu t8",
+    "wall_s": 15.34,
+    "watts": 115.0,
+    "pids": {
+      "worker": 3712109,
+      "controller": 3712110
+    },
+    "gpu_busy_median": 93,
+    "gpu_busy_max": 100,
+    "gtt_gib_max": 57.8,
+    "worker": {
+      "pp512": [
+        220.09,
+        0.0
+      ],
+      "tg64": [
+        11.37,
+        0.0
+      ]
+    },
+    "controller": {
+      "pp2048": [
+        525.77,
+        37.04
+      ]
+    },
+    "round": 2
+  },
+  {
+    "arm": "C  gpu + ctrl-npu t4",
+    "wall_s": 18.56,
+    "watts": 92.9,
+    "pids": {
+      "worker": 3712209,
+      "controller": 3712210
+    },
+    "gpu_busy_median": 59.5,
+    "gpu_busy_max": 100,
+    "gtt_gib_max": 57.8,
+    "worker": {
+      "pp512": [
+        250.73,
+        0.0
+      ],
+      "tg64": [
+        11.35,
+        0.0
+      ]
+    },
+    "controller": {
+      "pp2048": [
+        488.06,
+        91.82
+      ]
+    },
+    "round": 2
+  },
+  {
+    "arm": "D  gpu + ctrl-npu t6",
+    "wall_s": 15.91,
+    "watts": 101.7,
+    "pids": {
+      "worker": 3712320,
+      "controller": 3712321
+    },
+    "gpu_busy_median": 87.5,
+    "gpu_busy_max": 99,
+    "gtt_gib_max": 57.8,
+    "worker": {
+      "pp512": [
+        243.24,
+        0.0
+      ],
+      "tg64": [
+        11.18,
+        0.0
+      ]
+    },
+    "controller": {
+      "pp2048": [
+        563.47,
+        106.1
+      ]
+    },
+    "round": 2
+  },
+  {
+    "arm": "E  gpu + ctrl-npu t8",
+    "wall_s": 14.75,
+    "watts": 105.5,
+    "pids": {
+      "worker": 3712467,
+      "controller": 3712468
+    },
+    "gpu_busy_median": 94.0,
+    "gpu_busy_max": 99,
+    "gtt_gib_max": 57.8,
+    "worker": {
+      "pp512": [
+        235.94,
+        0.0
+      ],
+      "tg64": [
+        11.07,
+        0.0
+      ]
+    },
+    "controller": {
+      "pp2048": [
+        605.27,
+        99.95
+      ]
+    },
+    "round": 2
+  }
+]
