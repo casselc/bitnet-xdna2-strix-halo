@@ -116,31 +116,69 @@ worker, and t8's isolated controller advantage does not survive contact with a
 co-tenant. But the effect is modest (single-digit percent on the GPU side), so
 it is a tuning knob, not a redesign.
 
-## 5. Memory pressure [MEASURED / DEFERRED]
+## 5. Memory pressure: capacity is free, activity is not [MEASURED]
 
 The runtime keeps **2006.2 MiB** of expanded int8 weights resident in the same
-LPDDR5X the GPU uses. The driver reports `uma: 1` and the GPU's real capacity is
-**GTT (97.7 GiB)**, not the 0.5 GiB VRAM carve-out, so there is no separate
-"GPU memory" to hide in.
+LPDDR5X the GPU uses. The driver reports `uma: 1`, and the GPU's real capacity
+is **GTT (97.7 GiB)** rather than the 0.5 GiB VRAM carve-out, so there is no
+separate "GPU memory" to hide in. The brief asks to separate the **capacity**
+cost of that footprint from the **bandwidth/contention** cost of the work.
 
-**Capacity is not the problem.** 2.0 GiB against 97.7 GiB of GTT and 122 GiB of
-system RAM is not a capacity constraint, and nothing in the matrix behaves like
-one — no arm failed to allocate, and no arm showed the cliff that memory
-exhaustion produces.
+That separation is available without new machinery. A **decode-only** controller
+loads the model and uploads all 2.0 GiB of weights but issues **zero NPU
+dispatches** — decode takes the CPU GEMV path — so it isolates footprint from
+activity. Raw: `tri_device_extra.csv`.
 
-**What the matrix does show is bandwidth/occupancy contention**, and it appears
-most clearly in GPU **decode**: −7.7% to −10.3% depending on thread count, and
-worse the more CPU threads the controller uses. Decode is memory-bound, so it is
-the workload most exposed to a competing memory consumer, and it degrades
-monotonically with controller CPU width. That is the signature of bandwidth
-contention rather than capacity exhaustion.
+| arm | NPU weights resident | NPU active | GPU pp512 | GPU tg64 |
+|---|---|---|---:|---:|
+| **A** GPU alone | no | no | 288.5 | 12.29 |
+| **F** GPU + controller **decoding** | **yes, 2.0 GiB** | **no** | **290.3** | **12.29** |
+| **E** GPU + controller **prefilling** t8 | yes | yes | 236.4 | 11.03 |
 
-**GTT accounting is reported but should not be over-read.** It sits at 57.8 GiB
-whenever the GPU model is loaded and 41.3 GiB otherwise, regardless of whether
-the controller is idle or actively prefilling. That figure clearly includes more
-than this workload's footprint, so it is recorded as raw data and **no bandwidth
-number is derived from it**. This machine exposes no trustworthy DRAM bandwidth
-counter, and per the brief none is manufactured from utilisation proxies.
+**A → F costs nothing.** 290.3 vs 288.5 pp512 and 12.29 vs 12.29 tg64 — the
+resident 2.0 GiB is invisible to the GPU worker, within noise and if anything
+marginally faster.
+
+**F → E costs everything.** −18.6% prefill and −10.3% decode. **The entire
+co-tenancy penalty is concurrent activity, not memory footprint.**
+
+This is a direct answer to B11 and it settles B12: **packed ternary residency
+would buy nothing here.** Shrinking a footprint that already costs zero cannot
+improve co-tenancy. If that work is ever justified it will be for a different
+reason — fitting more specialists in memory, say — and not by this evidence.
+
+**GTT accounting is recorded but deliberately not interpreted.** It reads
+57.8 GiB whenever the GPU model is loaded and 41.3 GiB otherwise, regardless of
+whether the controller is idle, decoding or prefilling. It plainly includes far
+more than this workload, so **no bandwidth number is derived from it**. This
+machine exposes no trustworthy DRAM bandwidth counter, and per the brief none is
+manufactured from a utilisation proxy.
+
+## 6. The CPU harness tenant [MEASURED]
+
+A workload shaped like the eventual control plane rather than a synthetic loop:
+structured Clojure (SCI/babashka) building a 220-node dependency graph,
+topologically ordering it, and checking the ordering invariant — the shape a
+verifier actually has. Standalone baseline **1153 ops/s, p50 0.770 ms,
+p95 1.275 ms**.
+
+| arm | controller | GPU pp | GPU tg |
+|---|---:|---:|---:|
+| **D** GPU + controller t6 | 564.0 | 243.2 | 11.18 |
+| **G** GPU + controller t6 **+ tenant** | 549.1 | 236.4 | 11.02 |
+| | **−2.6%** | **−2.8%** | **−1.4%** |
+| controller t6 alone | 750.4 | — | — |
+| **H** controller t6 **+ tenant**, no GPU | 739.4 | — | — |
+| | **−1.5%** | | |
+
+**Adding a real control-plane tenant costs 1.5–2.8%.** There is genuine CPU
+headroom left at t6 even with the GPU worker running — which is the practical
+case for the recommended default.
+
+*Power in arms G and H is not comparable to the others.* The tenant runs a fixed
+25 s while the benchmarks finish earlier, so package power is averaged over a
+window that includes idle tail. The G figure (80.4 W vs D's 101.9 W) is that
+averaging artifact, not a real power saving.
 
 ## 6. Verdict
 
@@ -169,8 +207,15 @@ cost.
   independent correctness path is CPU (PPL 19.6300 vs 19.4907, 0.71% apart).
   A ROCm arm could change the GPU absolute numbers but not the CPU-vs-NPU
   controller comparison, which is measured against a fixed worker.
-- **Packed ternary residency is not justified by this data.** The 2.0 GiB
-  footprint is not a capacity problem on a 122 GiB machine. Per the brief this
-  is recorded, not acted on.
-- **Controller decode and TTFT under co-tenancy** were not measured; the
-  controller arms measure prefill (pp2048), which is the contended phase.
+- **Packed ternary residency is affirmatively NOT justified.** Section 5
+  measures the resident 2.0 GiB as costing the GPU worker **zero** (arm F equals
+  arm A). Shrinking a footprint that already costs nothing cannot improve
+  co-tenancy. Per the brief this is recorded, not acted on — and the evidence is
+  now stronger than "not yet justified": it is measured as pointless *for this
+  purpose*.
+- **Controller TTFT under co-tenancy** was not measured; the controller arms
+  measure prefill throughput (pp2048), which is the contended phase. Controller
+  decode was measured only in arm F (42.15 t/s) as the vehicle for the memory
+  separation, not swept.
+- **`-ub 2048` is required** for the controller to use the NPU at all; every
+  controller arm here passes it. See `docs/RUNTIME_STATUS.md`.

@@ -71,6 +71,10 @@ def main():
             for c in mk():
                 pass
             rows.append(rec)
+            tn = rec.get("tenant") or {}
+            if tn:
+                print(f"       tenant {tn.get('ops_per_s',0):8.1f} ops/s  "
+                      f"p50 {tn.get('p50_ms',0):.3f} ms  p95 {tn.get('p95_ms',0):.3f} ms")
             c = rec.get("controller") or {}
             w = rec.get("worker") or {}
             cs = f"{c['pp2048'][0]:7.1f}" if isinstance(c, dict) and "pp2048" in c else \
@@ -90,6 +94,10 @@ def main():
             if isinstance(v, dict):
                 for test, (ts, sd) in v.items():
                     d[f"{who}_{test}"] = ts
+        tn = r.get("tenant")
+        if isinstance(tn, dict):
+            for k2 in ("ops", "ops_per_s", "p50_ms", "p95_ms"):
+                d[f"tenant_{k2}"] = tn.get(k2)
         flat.append(d)
     keys, seen = [], set()
     for d in flat:

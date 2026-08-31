@@ -157,7 +157,15 @@ def run_arm(label, children, timeout=3600):
                gtt_gib_max=(round(max(sysinfo["gtt_gib"]), 2)
                             if sysinfo["gtt_gib"] else None))
     for c in children:
-        rec[c.label] = parse_bench(c.out)
+        if c.label == "tenant":
+            # The CPU tenant reports one JSON line: ops, ops_per_s, p50, p95.
+            # parse_bench only understands llama-bench tables, so without this
+            # the tenant's own numbers are silently dropped.
+            line = next((l for l in c.out.splitlines()
+                         if l.strip().startswith("{") and "ops_per_s" in l), None)
+            rec[c.label] = json.loads(line) if line else {}
+        else:
+            rec[c.label] = parse_bench(c.out)
         if "TIMEOUT" in c.out:
             rec[c.label] = "TIMEOUT"
     return rec

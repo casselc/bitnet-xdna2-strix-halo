@@ -1,0 +1,13 @@
+arm,wall_s,watts,gpu_busy_median,gpu_busy_max,gtt_gib_max,round,controller_tg128,worker_pp512,worker_tg64,controller_pp2048
+tenant alone,25.07,34.3,0,0,41.28,0,,,,
+F  gpu + ctrl DECODE,15.37,82.1,69,100,57.8,0,41.23,289.91,12.29,
+G  gpu + ctrl t6 + tenant,25.02,80.4,30.0,100,57.8,0,,237.8,11.09,561.9
+H  ctrl + tenant (no gpu),25.02,58.0,0.0,0,41.28,0,,,,739.43
+tenant alone,25.02,34.4,0.0,0,41.28,1,,,,
+F  gpu + ctrl DECODE,15.88,81.2,56.5,100,57.8,1,42.15,290.77,12.3,
+G  gpu + ctrl t6 + tenant,25.02,80.6,28.5,100,57.8,1,,235.14,11.01,541.79
+H  ctrl + tenant (no gpu),25.02,57.8,0.0,0,41.28,1,,,,739.95
+tenant alone,25.02,34.6,0.0,0,41.28,2,,,,
+F  gpu + ctrl DECODE,15.25,83.4,72,100,57.8,2,42.72,290.26,12.28,
+G  gpu + ctrl t6 + tenant,25.04,81.0,29.5,100,57.8,2,,236.41,11.02,549.09
+H  ctrl + tenant (no gpu),25.02,58.3,0.0,0,41.28,2,,,,710.51
