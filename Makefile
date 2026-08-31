@@ -39,6 +39,8 @@ $(BUILD)/test_xdna_shapes: tests/test_xdna_shapes.cpp runtime/bitnet_xdna.cpp $(
 
 $(BUILD)/test_xdna_concurrent: tests/test_xdna_concurrent.cpp runtime/bitnet_xdna.cpp $(RT_CXX) runtime/bitnet_i2s.c | $(BUILD)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(XRTINC) $(XRTLIB) -lm -lpthread
+$(BUILD)/npu_two_context: tools/npu_two_context.cpp $(RT_CXX) | $(BUILD)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(XRTINC) $(XRTLIB) -lm -lpthread
 $(BUILD)/npu_stress: tools/npu_stress.cpp runtime/bitnet_xdna.cpp $(RT_CXX) runtime/bitnet_i2s.c | $(BUILD)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(XRTINC) $(XRTLIB) -lm -lpthread
 $(BUILD)/npu_probe: tools/npu_probe.cpp | $(BUILD)
