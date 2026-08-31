@@ -248,27 +248,50 @@ class LeaseWindow:
 
 
 class Power:
+    """Package RAPL, accumulated across samples.
+
+    The counter wraps at max_energy_range_uj -- 65533 J on this machine, which
+    at ~110 W is every ~596 s. Taking one delta across a long window and adding
+    a single wrap silently UNDERCOUNTS: with more than one wrap, or with a wrap
+    that still leaves a positive raw delta, the correction never fires. That is
+    exactly what happened to the first 900 s soak, which reported 43.2 W for a
+    load independently measured at ~117 W.
+
+    So energy is accumulated from the same 0.5 s poll that samples GPU busy,
+    where each interval is far shorter than a wrap period and a negative delta
+    unambiguously means one wrap."""
+
     def __enter__(self):
         self.t0 = time.time()
-        self.e0 = read_int(RAPL)
+        self.wrap = read_int(RAPL_MAX, 0)
+        self._e_prev = read_int(RAPL)
+        self.energy_uj = 0
         self.gpu = []
         self._stop = False
         self._t = threading.Thread(target=self._poll, daemon=True)
         self._t.start()
         return self
 
+    def _accumulate(self):
+        e = read_int(RAPL)
+        d = e - self._e_prev
+        if d < 0:
+            d += self.wrap
+        self.energy_uj += d
+        self._e_prev = e
+
     def _poll(self):
         while not self._stop:
             self.gpu.append(read_int(GPU_BUSY))
+            self._accumulate()
             time.sleep(0.5)
 
     def __exit__(self, *a):
         self._stop = True
+        self._t.join(timeout=2)
+        self._accumulate()
         dt = time.time() - self.t0
-        de = read_int(RAPL) - self.e0
-        if de < 0:
-            de += read_int(RAPL_MAX, 0)
-        self.watts = round((de / 1e6) / dt, 1) if dt > 0 else None
+        self.watts = round((self.energy_uj / 1e6) / dt, 1) if dt > 0 else None
         self.wall = round(dt, 2)
         self.gpu_busy_med = st.median(self.gpu) if self.gpu else None
 
