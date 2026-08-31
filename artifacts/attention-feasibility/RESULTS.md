@@ -279,3 +279,131 @@ The alternative that avoids the switch tax entirely -- placing attention in the
 **same** xclbin as the GEMM -- is a substantially larger redesign (AMD's MHA
 already uses 24 of 32 cores) and is not recommended without the standalone
 numbers first.
+
+---
+
+## D. The stock d=64 operator, measured on this machine [MEASURED]
+
+AMD's operator was built and run here **unmodified**, before any head_dim port.
+
+**It compiled and ran against our toolchain despite the version gap.** IRON pins
+`mlir_aie 1.4.2.dev16` / `llvm-aie 22.x`; this machine has `1.4.2` / `21.x`.
+Compilation took 4.5-8.8 s and produced numerically correct results, so the
+"Peano is a major version behind" risk did not materialise. The only real
+incompatibility was `XRTTensor.from_torch`, absent in 1.4.2, so
+`tools/attention_npu_probe.py` supplies a numpy golden and driver instead of
+IRON's torch-based `run_test`.
+
+**FLOP-equivalent configuration.** The op refuses `d != 64` and BitNet needs 128.
+QK^T and PV both scale as `heads * d`, so **40 heads / 10 KV heads at d=64 does
+the same arithmetic as BitNet's 20 heads / 5 KV heads at d=128**, with the same
+GQA ratio of 4. That is what was measured.
+
+### Result: the stock kernel is ~2x SLOWER than the CPU
+
+30 layers, against the CPU oracle from section C at 15 threads:
+
+| S | **NPU d=64 stock** | **CPU** | | rel L2 | outside AMD's tol |
+|---:|---:|---:|---|---:|---:|
+| 512 | 137.8 ms | 50.9 ms | **NPU 2.71x slower** | 0.0142 | 0.000% |
+| 1024 | 380.8 ms | 165.2 ms | **NPU 2.31x slower** | 0.0138 | 0.000% |
+| 2048 | 1172.4 ms | 602.0 ms | **NPU 1.95x slower** | 0.0130 | 0.000% |
+
+Correctness held throughout -- **0.000% of elements outside AMD's own
+`rel_tol=4e-2 / abs_tol=1.5e-1` gate**, rel-L2 ~0.013 -- so this is not a broken
+kernel producing fast nonsense. It is a correct kernel that is slow.
+
+This is **before** the measured 153 ms/prefill context-switch tax from section D's
+gating measurement.
+
+### It is compute/occupancy-bound, not data-movement-bound
+
+The obvious hypothesis, from reading `design.py`, was redundant KV streaming: the
+runtime re-fills the entire K and V of a KV head from DDR for **every**
+`(head, q_block)` pair, with no L2 residency. That predicts a DMA bound, which
+would be fixable.
+
+Testing it says otherwise. Halving the pipelines halves the columns (and so the
+compute) while leaving the DMA pattern unchanged:
+
+| pipelines | compute cores | ms/layer @ S=1024 | vs 8 pipelines |
+|---:|---:|---:|---:|
+| 8 | 24 | 12.670 | — |
+| 4 | 12 | 22.404 | 1.77x |
+| 2 | 6 | 41.469 | 3.27x |
+
+Near-linear in compute resources. **The kernel is bound by compute/occupancy, so
+fixing the KV re-streaming would not rescue it.**
+
+> A first attempt at this discriminator showed 12.671 vs 12.669 ms for 8 vs 4
+> pipelines -- an apparently perfect DMA-bound signature. It was wrong:
+> `num_of_pipelines` is declared `field(..., repr=False)`, and `base.py:140`
+> builds the artifact name only from `repr=True` fields, so the pipes=4 run
+> silently reused the pipes=8 xclbin. The same stale-artifact trap this project
+> hit once before with `~/.npu/cache`. The table above is from runs with the
+> build directory cleared between configurations.
+
+### Why 2x slower, quantitatively
+
+At S=2048 the work is 0.644 TFLOP over 30 layers:
+
+| | rate |
+|---|---:|
+| NPU, stock MHA | **0.55 TFLOPS** |
+| CPU, `FLASH_ATTN_EXT` at 15 threads | **1.07 TFLOPS** |
+| same NPU, int8 I2_S GEMM (measured earlier) | ~11 TOPS |
+
+The kernel runs at roughly **5% of the device's demonstrated capability**. It uses
+24 of 32 cores (3 of 4 compute rows), pays a per-mmul bf16->bfp16 conversion, and
+serialises QK -> softmax -> PV through a three-stage pipeline whose middle stage
+is a scalar-ish softmax core.
+
+**Even perfect scaling to all 32 cores gives 0.73 TFLOPS -- still below the CPU's
+1.07.** Closing a 2x deficit and then beating the CPU by a margin worth the
+integration would need roughly a 4x improvement over a kernel AMD ships and
+tests. And the numeric fixes that would make it trustworthy (f32 online-softmax
+statistics instead of bf16, `exp2f_vec` instead of the 6-49%-error hardware LUT,
+exact `log2e`) all **add** cost.
+
+---
+
+## Verdict
+
+### **ATTENTION NPU REJECT**
+
+On the evidence available, XDNA2 should not take BitNet's prefill attention.
+
+| | |
+|---|---|
+| correct? | **Yes** -- 0.000% outside AMD's tolerance at every length tested |
+| faster? | **No** -- 1.95x to 2.71x *slower* than Zen 5, fully burdened, before the switch tax |
+| fixable by data movement? | **No** -- proven compute/occupancy-bound by pipeline scaling |
+| headroom to the device's own ceiling? | 24/32 cores would give 0.73 TFLOPS, still below the CPU's 1.07 |
+| additional cost if adopted | **+153 ms/prefill** of context switching, measured |
+| accuracy fixes | would make it **slower**, not faster |
+
+This is a REJECT of the *measured proposition* -- that the existing, silicon-
+tested aie2p flash-attention operator can beat the CPU for these shapes. It is
+not a claim that no XDNA2 attention kernel could ever win. What would have to
+change to reopen it:
+
+1. A kernel using all 32 cores with a fundamentally better pipeline than
+   QK -> softmax -> PV across three rows, i.e. **new kernel research, not a port**.
+2. Evidence that d=128 has materially better arithmetic intensity than the
+   FLOP-equivalent d=64 measured here -- plausible, but it would need to be worth
+   ~4x, not ~1.3x.
+3. Attention co-resident in the **same** xclbin as the GEMM, to avoid the 153 ms
+   switch tax. AMD's design already uses 24 of 32 cores, so this is a redesign.
+
+**The cheap check did its job.** The d=64 measurement cost a few hours and
+avoided a head_dim port, four documented toolchain hazards, and a numeric-fix
+campaign, all of which would have been spent on a kernel that starts 2x behind.
+
+### Where the remaining opportunity actually is
+
+Attention is still 29.8% of prefill at 2K and 51.0% at 4K, and it is still the
+dependency-constrained critical path. This result says the NPU is not the way to
+attack it. The CPU-side options are untouched by anything measured here:
+`FLASH_ATTN_EXT` runs at 1.07 TFLOPS against ~10 TFLOPS for the CPU's own int8
+GEMM, so the Zen 5 path itself may have headroom -- a question this pass did not
+ask and which is now the cheaper one.
