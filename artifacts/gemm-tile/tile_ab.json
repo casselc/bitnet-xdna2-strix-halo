@@ -1,0 +1,72 @@
+{
+  "coordinate": {
+    "M": 1024,
+    "K": 2560,
+    "N": 2560,
+    "cols": 8,
+    "b_col_maj": 1,
+    "dtype_in": "i8",
+    "dtype_out": "i32"
+  },
+  "env": {
+    "C_FIFO_DEPTH": "1",
+    "TB_MAX_N_ROWS": "2"
+  },
+  "incumbent": [
+    128,
+    64,
+    64
+  ],
+  "rounds": 5,
+  "iters": 20,
+  "summary": [
+    {
+      "m": 128,
+      "k": 64,
+      "n": 64,
+      "l1_bytes": 57344,
+      "samples": 5,
+      "median_us": 1082.7,
+      "sd_us": 14.3,
+      "min_us": 1079.0,
+      "tops": 12.397,
+      "speedup_vs_incumbent": 1.0
+    },
+    {
+      "m": 64,
+      "k": 128,
+      "n": 80,
+      "l1_bytes": 57344,
+      "samples": 5,
+      "median_us": 1044.2,
+      "sd_us": 4.9,
+      "min_us": 1042.7,
+      "tops": 12.854,
+      "speedup_vs_incumbent": 1.0369
+    },
+    {
+      "m": 64,
+      "k": 128,
+      "n": 64,
+      "l1_bytes": 49152,
+      "samples": 5,
+      "median_us": 1043.4,
+      "sd_us": 2.4,
+      "min_us": 1042.4,
+      "tops": 12.863,
+      "speedup_vs_incumbent": 1.0377
+    },
+    {
+      "m": 128,
+      "k": 128,
+      "n": 32,
+      "l1_bytes": 57344,
+      "samples": 5,
+      "median_us": 1179.0,
+      "sd_us": 28.4,
+      "min_us": 1113.3,
+      "tops": 11.384,
+      "speedup_vs_incumbent": 0.9183
+    }
+  ]
+}
