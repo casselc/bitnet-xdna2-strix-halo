@@ -374,3 +374,100 @@ would be a 1.5 s rebuild and a five-way decision would cost 7.5 s instead of 130
 
 A grammar-constrained single pass would likely also work and is cheaper still, but that
 was not measured here and is not claimed.
+
+---
+
+# Final answers
+
+**1. Can distinct cached suffixes batch so their aggregate new-token work forms a large
+matrix and re-engages XDNA?** **Yes — measured, and it does not pay.** Distinct suffixes
+do coalesce past `kMTile = 1024` and the NPU does engage (Section 2). Throughput does not
+improve: the best cell is 1.571 vs 1.213 req/s (1.30x) for 4x the in-flight work and 3.1x
+the p95, and at ~1139 new tokens throughput *falls* with concurrency while p95 rises 9.2x
+(Section 3). Outcome D of Task 4.
+
+**2. Can we maintain a disposable model-KV state spine, fork ephemeral branches, and
+pre-warm/rebase in the background?** **Yes, on all three counts, and this is where the
+wins are.** Spine reuse removes 98.8% of per-turn prefill (2328 -> 28 evaluated tokens)
+and cuts TTFT 20.6x (3023 -> 147 ms). Forks pass all four invariants. Prewarming makes a
+query 78x faster (2665 -> 34 ms).
+
+**3. What is the real per-turn cost of a stateful controller?** 28 evaluated tokens,
+~147 ms TTFT, ~122-130 ms total at a 10-25 turn rebase cadence. Against 2328 tokens and
+3023 ms for the stateless equivalent.
+
+**4. Does the NPU help the stateful path?** **No, and that is the honest headline.** The
+regime that offloads (rebuild, 2328 tokens) is the slow one; the regime that wins (spine
+reuse, 28 tokens) is permanently below `kMTile` and never dispatches. Every optimisation
+that helped in this brief moved work *away* from the NPU.
+
+**5. What is the cost of a scored decision?** ~26 ms per candidate, 130 ms for five
+(Section 13). The one-pass first-token method is 20 ms and does not work — none of the
+five actions appears in the top-20.
+
+**6. Does batching background cache fills help?** No. Fills/s is flat at ~0.6 across
+1/2/4/8 (Section 11). It changes who waits, not how much gets done.
+
+**7. Is cache affinity a useful scheduling signal?** No (Section 12). Forced routing to a
+wrong-prefix or idle-cold slot is indistinguishable from the warm-correct slot — 0.6 ms
+spread across six cells — because the RAM prompt cache restores state into whatever slot
+is chosen.
+
+**8. What signal *should* the scheduler use?** Residency. Whether a domain is inside the
+~74-entry prompt cache is a 17 ms vs 1397 ms difference — 82x, and the only cache
+distinction on this server large enough to schedule against.
+
+**9. How many warm state domains fit comfortably?** **74**, at ~1500 tokens each, on the
+default `--cache-ram 8192`. Implied per-state size 111 MiB = 76.0 KiB/token, matching the
+75.0 KiB/token derived from model geometry to 1.3% (Section 10). Scales linearly in
+`--cache-ram` and inversely in spine length. Separately, each *slot* is capped at
+`n_ctx / n_parallel` = 2560 tokens here, so spine length and concurrency trade off
+directly — a 2560-token spine allows 8 concurrent sequences, a 5120-token spine allows 4.
+
+**10. What happens past capacity?** A cliff, not a slope: 26 ms -> 1397 ms. And a cyclic
+access pattern over an oversized working set collapses to a **0% hit rate** rather than a
+partial one, with per-request latency reaching ~13 s (Section 10). This is the strongest
+argument for admission control in the whole pass.
+
+**11. Is state reuse safe?** Yes, within the boundary that was built. No cross-sequence
+contamination in 32/32 high-entropy trials (Section 4); forks leave the authoritative
+version untouched (Section 7); memoization invalidates on all 8 cases including tenant,
+authority and policy version (Section 9). `tenant` and `authority` are part of the memo
+key precisely so a token-prefix match can never on its own authorise reuse (Task 14).
+
+**12. Does co-tenancy break any of this?** No. Under an active GPU worker the *prewarm*
+slows 1.6x (bandwidth-bound prefill) but the warm query only moves 34 -> 89 ms; under the
+CPU verifier the warm query is unaffected at 33 ms and the verifier holds 1230 ops/s
+(Section 8). Consistent with the tri-device result on the previous branch.
+
+---
+
+# Recommendation
+
+**Build the controller around a pre-warmed state spine with residency-aware admission
+control, and stop trying to route work to the NPU.**
+
+Concretely: keep one canonical spine per state domain, append only the query suffix, rebase
+every 10-25 turns, pre-warm during idle time, and score candidate actions by explicit
+per-action suffix evaluation. Admit work only while the active domain set stays inside the
+cache — raise `--cache-ram` to widen it, but treat the limit as hard, because exceeding it
+costs every hit rather than a proportional share.
+
+This gives ~147 ms TTFT and ~26 ms per scored action against 3023 ms and 1.5 s for the
+stateless equivalent, and it does so with the NPU idle.
+
+**On the NPU, stated plainly.** Across this brief, every measured improvement reduced the
+evaluated-token count and therefore moved work below `kMTile` and off the NPU. The one
+configuration that reliably engages XDNA — full prefill every turn — is the one worth
+20.6x less. The offload is not broken and was not disabled or retuned to reach this
+conclusion; it engages correctly when the shape calls for it (Section 2) and simply does
+not pay at controller scale (Section 3). **This does not generalise beyond the 2B
+controller measured here**: a larger model, a longer irreducible suffix, or a workload
+without a reusable prefix would all put more work above the threshold, and none of those
+were measured.
+
+**Reopening conditions.** Revisit the NPU for this path if any of: the irreducible
+per-turn suffix exceeds ~1024 tokens for structural reasons; the model grows enough that a
+28-token step is no longer bandwidth-trivial; or `kMTile` is re-derived against a
+materially different GEMM kernel. Absent one of those, the spine is the optimisation and
+the NPU is not.
