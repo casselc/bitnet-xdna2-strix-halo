@@ -1,0 +1,15 @@
+{
+  "progmem_bytes": 16384,
+  "stock_stage_text_bytes": {
+    "2_QK": 1696,
+    "3_softmax": 5328,
+    "4_PV": 3744
+  },
+  "stock_sum_text_bytes": 10768,
+  "fused_core_text_bytes": {
+    "0_2": 8656
+  },
+  "fused_max_text_bytes": 8656,
+  "headroom_bytes": 7728,
+  "fits": true
+}
