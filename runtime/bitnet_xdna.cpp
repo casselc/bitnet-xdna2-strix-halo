@@ -227,6 +227,15 @@ bool g_async = false;
  * restores the g_acc path, which remains the reference and is still the live
  * path for ffn_down. */
 bool g_direct_out = true;
+/* Experimental: extend direct mapped output to the deep-K shapes (ffn_down,
+ * k_chunks == 3). Each K chunk gets its own persistent slot and the CPU workers
+ * do the int32 reduction, the scale and the store in ONE parallel pass, removing
+ * both the thread-0 `part` accumulation and the part -> g_acc copy.
+ *
+ * ON BY DEFAULT: bit-exact at every T, and 1.008-1.031x end-to-end across
+ * pp2048/pp3968 x threads 4/6/8/15 (artifacts/direct-output-closeout), never
+ * negative. Set BITNET_XDNA_DIRECT_KREDUCE=0 for the host `part` path. */
+bool g_direct_kreduce = true;
 
 /* Published by accumulate on thread 0 BEFORE the ggml barrier and read by every
  * thread AFTER it, so the barrier supplies the happens-before edge. Plain fields
@@ -234,8 +243,11 @@ bool g_direct_out = true;
 struct DirectOutPlan {
     bool                  active   = false;
     int                   n_chunks = 0;
+    int                   k_chunks = 1;   // >1 only on the direct-K-reduce path
     int64_t               N        = 0;
-    std::vector<int32_t*> slots;   // [token_tile * n_chunks + n_chunk]
+    /* Indexed ((token_tile * n_chunks) + n_chunk) * k_chunks + k_chunk.
+     * With k_chunks == 1 this collapses to the single-K layout. */
+    std::vector<int32_t*> slots;
 };
 DirectOutPlan g_direct;
 long g_force_tiles = -1;   /* BITNET_XDNA_TILES: exact NPU tile count, -1 = auto */
@@ -450,6 +462,9 @@ int bitnet_xdna_available(void) {
     /* Default on; set BITNET_XDNA_DIRECT_OUT=0 to fall back to the g_acc path. */
     if (const char *dv = std::getenv("BITNET_XDNA_DIRECT_OUT"))
         g_direct_out = !(dv[0] == '0' && dv[1] == '\0');
+    /* Default on; =0 restores the host `part` accumulation path. */
+    if (const char *kv = std::getenv("BITNET_XDNA_DIRECT_KREDUCE"))
+        g_direct_kreduce = !(kv[0] == '0' && kv[1] == '\0');
     g_npu_threads = g_direct_out ? kR_DIRECT : kR_GACC;
     if (const char *ft = std::getenv("BITNET_XDNA_TILES")) {
         g_force_tiles = std::strtol(ft, nullptr, 10);
@@ -540,13 +555,16 @@ int bitnet_xdna_accumulate(const void *src0_i2s, int64_t K, int64_t N,
          * int32 result. Deep-K (ffn_down) still needs host-side accumulation
          * across chunks and keeps the g_acc path untouched. */
         const int64_t n_tiles   = (T + kMTile - 1) / kMTile;
-        const bool    use_direct = g_direct_out && plan.k_chunks == 1;
+        const bool    use_direct = g_direct_out &&
+                                   (plan.k_chunks == 1 || g_direct_kreduce);
         if (use_direct) {
-            prog->ensure_out_slots((int)(n_tiles * plan.n_chunks));
+            const int64_t nslots = n_tiles * plan.n_chunks * plan.k_chunks;
+            prog->ensure_out_slots((int)nslots);
             g_direct.active   = true;
             g_direct.n_chunks = plan.n_chunks;
+            g_direct.k_chunks = plan.k_chunks;
             g_direct.N        = N;
-            g_direct.slots.assign((size_t)(n_tiles * plan.n_chunks), nullptr);
+            g_direct.slots.assign((size_t)nslots, nullptr);
         } else {
             g_direct.active = false;
         }
@@ -557,11 +575,12 @@ int bitnet_xdna_accumulate(const void *src0_i2s, int64_t K, int64_t N,
         // K-chunk partial sums, when K exceeds one chunk. Sized for the whole N
         // so the K loop can be OUTSIDE the N loop (see below).
         std::vector<int32_t> part;
-        if (plan.k_chunks > 1) part.resize((size_t)(kMTile * N));
+        const bool need_part = plan.k_chunks > 1 && !use_direct;
+        if (need_part) part.resize((size_t)(kMTile * N));
 
         for (int64_t t0 = 0; t0 < T; t0 += kMTile) {
             const int64_t rows = std::min<int64_t>(kMTile, T - t0);
-            if (plan.k_chunks > 1) std::fill(part.begin(), part.end(), 0);
+            if (need_part) std::fill(part.begin(), part.end(), 0);
 
             // K OUTSIDE N. Every N-chunk of a given K-slice consumes the SAME
             // activations, so with N outer the identical slice was copied into
@@ -648,7 +667,8 @@ int bitnet_xdna_accumulate(const void *src0_i2s, int64_t K, int64_t N,
                      * has read them. */
                     const int64_t tile = t0 / kMTile;
                     for (int nc = 0; nc < plan.n_chunks; ++nc) {
-                        const int slot = (int)(tile * plan.n_chunks + nc);
+                        const int slot = (int)(((tile * plan.n_chunks) + nc)
+                                               * plan.k_chunks + kc);
                         const auto d0 = std::chrono::steady_clock::now();
                         if (g_async) {
                             prog->submit_async_slot(chunk_at(nc), slot);
@@ -691,7 +711,7 @@ int bitnet_xdna_accumulate(const void *src0_i2s, int64_t K, int64_t N,
                 }
             }
 
-            if (plan.k_chunks > 1) {
+            if (need_part) {
                 const auto pc0 = std::chrono::steady_clock::now();
                 for (int64_t r = 0; r < rows; ++r)
                     std::memcpy(g_acc.data() + (t0 + r) * N,
@@ -715,7 +735,7 @@ void bitnet_xdna_epilogue(int64_t N, int64_t row_begin, int64_t row_end,
         /* Same arithmetic as below, reading the NPU's mapped output slot instead
          * of a host copy of it. Column j of token t lives in the slot for
          * (t / kMTile, j / kNChunk), at row (t % kMTile), column (j % kNChunk). */
-        const int nch = g_direct.n_chunks;
+        const int nch = g_direct.n_chunks, kch = g_direct.k_chunks;
         for (int64_t t = row_begin; t < row_end; ++t) {
             const float post = ws / act_scales[t];
             const int64_t tile = t / kMTile, row = t % kMTile;
@@ -723,10 +743,24 @@ void bitnet_xdna_epilogue(int64_t N, int64_t row_begin, int64_t row_end,
             for (int nc = 0; nc < nch; ++nc) {
                 const int64_t n_off  = (int64_t)nc * kNChunk;
                 const int64_t n_keep = std::min(kNChunk, N - n_off);
-                const int32_t *acc = g_direct.slots[(size_t)(tile * nch + nc)]
-                                     + row * kNChunk;
+                const size_t base = (size_t)(((tile * nch) + nc) * kch);
                 float *d = drow + n_off;
-                for (int64_t j = 0; j < n_keep; ++j) d[j] = (float)acc[j] * post;
+                if (kch == 1) {
+                    const int32_t *acc = g_direct.slots[base] + row * kNChunk;
+                    for (int64_t j = 0; j < n_keep; ++j) d[j] = (float)acc[j] * post;
+                } else {
+                    /* Reduce across K chunks in int32 FIRST, exactly as the
+                     * host-side `part` accumulation did, then convert and scale
+                     * once. Summing in float instead would change the result.
+                     * |sum| <= K * 127 * 1 fits int32 comfortably. */
+                    const int32_t *c0 = g_direct.slots[base] + row * kNChunk;
+                    for (int64_t j = 0; j < n_keep; ++j) {
+                        int32_t v = c0[j];
+                        for (int k = 1; k < kch; ++k)
+                            v += (g_direct.slots[base + k] + row * kNChunk)[j];
+                        d[j] = (float)v * post;
+                    }
+                }
             }
         }
     } else {
@@ -777,6 +811,20 @@ double   bitnet_xdna_dispatch_ms(void)    { return xdna::Program::dispatch_ms();
 double   bitnet_xdna_repack_ms(void)      { return g_repack_ns.load() / 1e6; }
 double   bitnet_xdna_epilogue_ms(void)    { return g_epilogue_ns.load() / 1e6; }
 uint64_t bitnet_xdna_resident_bytes(void) { return g_resident_bytes.load(); }
+
+int bitnet_xdna_out_slots(void) {
+    try {
+        xdna::Program *pg = program_for(single_stem(), kKChunk, kNChunk);
+        return pg ? pg->out_slot_count() : 0;
+    } catch (...) { return -1; }
+}
+uint64_t bitnet_xdna_out_slot_bytes(void) {
+    try {
+        xdna::Program *pg = program_for(single_stem(), kKChunk, kNChunk);
+        return pg ? (uint64_t)pg->out_slot_bytes() : 0;
+    } catch (...) { return 0; }
+}
+int bitnet_xdna_resident_tensors(void) { return (int)g_resident.size(); }
 void     bitnet_xdna_reset_counters(void) { xdna::Program::reset_counters(); }
 
 } // extern "C"

@@ -110,6 +110,12 @@ double   bitnet_xdna_repack_ms(void);
  * the int32->f32 epilogue that converts the NPU's accumulators. */
 double   bitnet_xdna_epilogue_ms(void);
 uint64_t bitnet_xdna_resident_bytes(void);
+/* Introspection for the long-lived stress harness: the direct-output arena must
+ * reach a stable high-water mark rather than growing as differently sized
+ * requests arrive. */
+int      bitnet_xdna_out_slots(void);
+uint64_t bitnet_xdna_out_slot_bytes(void);
+int      bitnet_xdna_resident_tensors(void);
 void     bitnet_xdna_reset_counters(void);
 
 #ifdef __cplusplus

@@ -18,7 +18,7 @@ RT_CXX  := runtime/xdna_gemm.cpp
 all: $(BUILD)/test_i2s_packing $(BUILD)/test_coordinates \
      $(BUILD)/test_i2s_realdata $(BUILD)/test_xdna_gemm \
      $(BUILD)/npu_probe $(BUILD)/npu_gemm_bench $(BUILD)/npu_switch_cost \
-     $(BUILD)/test_xdna_shapes $(BUILD)/test_xdna_concurrent
+     $(BUILD)/test_xdna_shapes $(BUILD)/test_xdna_concurrent $(BUILD)/npu_stress
 
 $(BUILD):
 	@mkdir -p $(BUILD)
@@ -38,6 +38,8 @@ $(BUILD)/test_xdna_shapes: tests/test_xdna_shapes.cpp runtime/bitnet_xdna.cpp $(
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(XRTINC) $(XRTLIB) -lm -lpthread
 
 $(BUILD)/test_xdna_concurrent: tests/test_xdna_concurrent.cpp runtime/bitnet_xdna.cpp $(RT_CXX) runtime/bitnet_i2s.c | $(BUILD)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(XRTINC) $(XRTLIB) -lm -lpthread
+$(BUILD)/npu_stress: tools/npu_stress.cpp runtime/bitnet_xdna.cpp $(RT_CXX) runtime/bitnet_i2s.c | $(BUILD)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(XRTINC) $(XRTLIB) -lm -lpthread
 $(BUILD)/npu_probe: tools/npu_probe.cpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(XRTINC) $(XRTLIB)
