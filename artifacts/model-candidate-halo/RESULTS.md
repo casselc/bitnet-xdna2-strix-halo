@@ -32,12 +32,17 @@ candidate wins both.**
 
 - Hybrid architectures hold **3.2x to 6.3x more warm domains** in the same RAM,
   and two of them make a decision **faster** than the incumbent.
-- But **only the pure-attention incumbent restores its state correctly.** Every
-  hybrid tested diverges from a full recompute, and diverges further once a slot
-  has held a different domain. On LFM2.5-1.2B it changes the emitted decision.
+- But **only the pure-attention incumbent restores its state correctly under
+  domain switching.** The two smallest hybrids (Qwen3.5-0.8B, LFM2.5-1.2B) are
+  bit-exact on a *clean* slot and then diverge once that slot has held a
+  different domain; the larger ones (Qwen3.5-2B, LFM2.5-2.6B, Nemotron-3-Nano-4B)
+  are never bit-exact even on a clean slot. On LFM2.5-1.2B the divergence
+  **changes the emitted decision**, and does not recover.
 
 So the residency win is real and large, and it is currently unbankable for
-multi-domain deployment without either a runtime fix or one slot per domain.
+multi-domain deployment without either a runtime fix or one slot per domain —
+which is precisely the configuration that a high-domain-count deployment cannot
+afford.
 
 ## Hardware classification
 
