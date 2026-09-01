@@ -1,0 +1,100 @@
+{
+  "label": "lfm25-12b",
+  "model": "LiquidAI/LFM2.5-1.2B-Instruct",
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "torch": "2.10.0+rocm7.0",
+  "hip": "7.0.51831",
+  "gpu": "Radeon 8060S Graphics",
+  "load_s": 3.2,
+  "lora_r": 16,
+  "lora_alpha": 32,
+  "lora_targets": [
+    "in_proj",
+    "k_proj",
+    "out_proj",
+    "q_proj",
+    "v_proj"
+  ],
+  "conv_modules_not_adapted": [
+    "conv"
+  ],
+  "linear_module_names_present": [
+    "in_proj",
+    "k_proj",
+    "lm_head",
+    "out_proj",
+    "q_proj",
+    "v_proj",
+    "w1",
+    "w2",
+    "w3"
+  ],
+  "trainable_params": 3244032,
+  "total_params": 1173584640,
+  "trainable_pct": 0.2764,
+  "token_budget_per_update": 4096,
+  "ts": "2026-09-01T23:09:49Z",
+  "arms": [
+    {
+      "seq_len": 256,
+      "microbatch": 1,
+      "grad_accum": 16,
+      "tokens_per_update": 4096,
+      "steps_timed": 10,
+      "step_s_median": 2.1213,
+      "tokens_per_s": 1930.9,
+      "fwd_s_median": 1.2559,
+      "bwd_s_median": 0.8615,
+      "peak_mem_mib": 3084.9,
+      "watts": 101.6,
+      "loss_first": 9.4601,
+      "loss_last": 5.0753
+    },
+    {
+      "seq_len": 512,
+      "microbatch": 1,
+      "grad_accum": 8,
+      "tokens_per_update": 4096,
+      "steps_timed": 10,
+      "step_s_median": 1.7206,
+      "tokens_per_s": 2380.5,
+      "fwd_s_median": 0.9057,
+      "bwd_s_median": 0.8111,
+      "peak_mem_mib": 3944.0,
+      "watts": 112.1,
+      "loss_first": 4.0734,
+      "loss_last": 2.339
+    },
+    {
+      "seq_len": 1024,
+      "microbatch": 1,
+      "grad_accum": 4,
+      "tokens_per_update": 4096,
+      "steps_timed": 10,
+      "step_s_median": 1.9628,
+      "tokens_per_s": 2086.8,
+      "fwd_s_median": 0.8812,
+      "bwd_s_median": 1.0779,
+      "peak_mem_mib": 6118.0,
+      "watts": 112.4,
+      "loss_first": 2.0519,
+      "loss_last": 1.5533
+    },
+    {
+      "seq_len": 2048,
+      "microbatch": 1,
+      "grad_accum": 2,
+      "tokens_per_update": 4096,
+      "steps_timed": 10,
+      "step_s_median": 2.4886,
+      "tokens_per_s": 1645.9,
+      "fwd_s_median": 1.0874,
+      "bwd_s_median": 1.3969,
+      "peak_mem_mib": 12194.1,
+      "watts": 109.0,
+      "loss_first": 1.4547,
+      "loss_last": 1.4343
+    }
+  ]
+}

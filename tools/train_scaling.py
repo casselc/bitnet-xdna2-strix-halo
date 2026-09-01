@@ -87,13 +87,15 @@ def synth_corpus(tok, seq_len, n_seq, seed=0):
 CANDIDATE_TARGETS = [
     # attention (present in every family, but only in SOME layers of hybrids)
     "q_proj", "k_proj", "v_proj", "o_proj",
-    # dense MLP
+    # dense MLP, Llama/Qwen naming
     "gate_proj", "up_proj", "down_proj",
+    # dense MLP, LFM2 SwiGLU naming. Omitting these is not a neutral choice:
+    # it adapted Qwen3.5's MLP while leaving LFM2's untrained, which made a
+    # throughput comparison between them a comparison of two different jobs.
+    "w1", "w2", "w3",
     # Qwen3.5 / Qwen3-Next gated DeltaNet linear-attention blocks
     "in_proj_qkvz", "in_proj_ba", "out_proj",
-    # LFM2 short-conv blocks
-    "in_proj", "out_proj", "conv",
-    # Nemotron-H / Mamba2
+    # LFM2 short-conv blocks / Nemotron-H / Mamba2
     "in_proj", "out_proj",
 ]
 

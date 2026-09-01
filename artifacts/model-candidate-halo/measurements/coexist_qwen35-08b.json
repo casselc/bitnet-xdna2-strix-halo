@@ -1,0 +1,157 @@
+{
+  "controller_port": 8081,
+  "spine_tokens": 1600,
+  "delta_tokens": 135,
+  "train_model": "Qwen/Qwen3.5-0.8B",
+  "train_seq_len": 1024,
+  "ts": "2026-09-01T23:15:03Z",
+  "controller_alone": {
+    "turns": 20,
+    "errors": 0,
+    "ttft_ms": {
+      "n": 20,
+      "p50": 199.165,
+      "p95": 203.161,
+      "mean": 199.67419999999998,
+      "min": 191.772,
+      "max": 242.106
+    },
+    "total_ms": {
+      "n": 20,
+      "p50": 260.763,
+      "p95": 277.96000000000004,
+      "mean": 262.55435,
+      "min": 251.471,
+      "max": 306.099
+    },
+    "decode_tps": {
+      "n": 20,
+      "p50": 65.93153010598493,
+      "p95": 67.932475119731,
+      "mean": 63.97849704948245,
+      "min": 52.677325045434195,
+      "max": 68.00176804596919
+    },
+    "cache_n": {
+      "n": 20,
+      "p50": 1615,
+      "p95": 1615,
+      "mean": 1614.9,
+      "min": 1614,
+      "max": 1615
+    },
+    "wall_s": 5.3,
+    "package_watts": 110.3,
+    "req_per_s": 3.769
+  },
+  "train_running_at_measure": true,
+  "controller_loaded": {
+    "turns": 20,
+    "errors": 0,
+    "ttft_ms": {
+      "n": 20,
+      "p50": 294.862,
+      "p95": 303.706,
+      "mean": 293.46930000000003,
+      "min": 277.931,
+      "max": 312.841
+    },
+    "total_ms": {
+      "n": 20,
+      "p50": 394.92999999999995,
+      "p95": 406.832,
+      "mean": 394.40145,
+      "min": 384.01800000000003,
+      "max": 411.48
+    },
+    "decode_tps": {
+      "n": 20,
+      "p50": 39.60631324633147,
+      "p95": 41.41215446733616,
+      "mean": 39.66425385358071,
+      "min": 36.0893572485474,
+      "max": 41.557146270765585
+    },
+    "cache_n": {
+      "n": 20,
+      "p50": 1615,
+      "p95": 1615,
+      "mean": 1614.9,
+      "min": 1614,
+      "max": 1615
+    },
+    "wall_s": 8.0,
+    "package_watts": 120.0,
+    "req_per_s": 2.513
+  },
+  "still_training_after": true,
+  "training_under_load": {
+    "label": "coexist-qwen35-08b",
+    "model": "Qwen/Qwen3.5-0.8B",
+    "device": "cuda",
+    "dtype": "bfloat16",
+    "torch": "2.10.0+rocm7.0",
+    "hip": "7.0.51831",
+    "gpu": "Radeon 8060S Graphics",
+    "load_s": 3.2,
+    "lora_r": 16,
+    "lora_alpha": 32,
+    "lora_targets": [
+      "down_proj",
+      "gate_proj",
+      "k_proj",
+      "o_proj",
+      "out_proj",
+      "q_proj",
+      "up_proj",
+      "v_proj"
+    ],
+    "conv_modules_not_adapted": [
+      "conv1d"
+    ],
+    "linear_module_names_present": [
+      "down_proj",
+      "gate_proj",
+      "in_proj_a",
+      "in_proj_b",
+      "in_proj_qkv",
+      "in_proj_z",
+      "k_proj",
+      "lm_head",
+      "o_proj",
+      "out_proj",
+      "q_proj",
+      "up_proj",
+      "v_proj"
+    ],
+    "trainable_params": 7274496,
+    "total_params": 759667520,
+    "trainable_pct": 0.9576,
+    "token_budget_per_update": 4096,
+    "ts": "2026-09-01T23:15:19Z",
+    "arms": [
+      {
+        "seq_len": 1024,
+        "microbatch": 1,
+        "grad_accum": 4,
+        "tokens_per_update": 4096,
+        "steps_timed": 60,
+        "step_s_median": 4.0045,
+        "tokens_per_s": 1022.8,
+        "fwd_s_median": 1.2128,
+        "bwd_s_median": 2.7663,
+        "peak_mem_mib": 11723.8,
+        "watts": null,
+        "loss_first": 4.7755,
+        "loss_last": 1.0801
+      }
+    ]
+  },
+  "delta_pct": {
+    "ttft_p50": 48.0,
+    "ttft_p95": 49.5,
+    "total_p50": 51.5,
+    "total_p95": 46.4,
+    "req_per_s": -33.3
+  }
+}

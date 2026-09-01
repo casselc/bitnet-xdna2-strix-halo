@@ -1,0 +1,103 @@
+{
+  "label": "lfm25-12b",
+  "model": "LiquidAI/LFM2.5-1.2B-Instruct",
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "torch": "2.10.0+rocm7.0",
+  "hip": "7.0.51831",
+  "gpu": "Radeon 8060S Graphics",
+  "load_s": 3.6,
+  "lora_r": 16,
+  "lora_alpha": 32,
+  "lora_targets": [
+    "in_proj",
+    "k_proj",
+    "out_proj",
+    "q_proj",
+    "v_proj",
+    "w1",
+    "w2",
+    "w3"
+  ],
+  "conv_modules_not_adapted": [
+    "conv"
+  ],
+  "linear_module_names_present": [
+    "in_proj",
+    "k_proj",
+    "lm_head",
+    "out_proj",
+    "q_proj",
+    "v_proj",
+    "w1",
+    "w2",
+    "w3"
+  ],
+  "trainable_params": 11108352,
+  "total_params": 1181448960,
+  "trainable_pct": 0.9402,
+  "token_budget_per_update": 4096,
+  "ts": "2026-09-01T23:12:13Z",
+  "arms": [
+    {
+      "seq_len": 256,
+      "microbatch": 1,
+      "grad_accum": 16,
+      "tokens_per_update": 4096,
+      "steps_timed": 10,
+      "step_s_median": 2.9493,
+      "tokens_per_s": 1388.8,
+      "fwd_s_median": 1.6168,
+      "bwd_s_median": 1.3242,
+      "peak_mem_mib": 3399.6,
+      "watts": 94.8,
+      "loss_first": 7.7157,
+      "loss_last": 3.6445
+    },
+    {
+      "seq_len": 512,
+      "microbatch": 1,
+      "grad_accum": 8,
+      "tokens_per_update": 4096,
+      "steps_timed": 10,
+      "step_s_median": 2.4041,
+      "tokens_per_s": 1703.8,
+      "fwd_s_median": 1.2058,
+      "bwd_s_median": 1.1913,
+      "peak_mem_mib": 4449.5,
+      "watts": 105.5,
+      "loss_first": 3.1537,
+      "loss_last": 1.7733
+    },
+    {
+      "seq_len": 1024,
+      "microbatch": 1,
+      "grad_accum": 4,
+      "tokens_per_update": 4096,
+      "steps_timed": 10,
+      "step_s_median": 2.502,
+      "tokens_per_s": 1637.1,
+      "fwd_s_median": 1.1042,
+      "bwd_s_median": 1.3885,
+      "peak_mem_mib": 7009.0,
+      "watts": 110.4,
+      "loss_first": 1.4967,
+      "loss_last": 1.3193
+    },
+    {
+      "seq_len": 2048,
+      "microbatch": 1,
+      "grad_accum": 2,
+      "tokens_per_update": 4096,
+      "steps_timed": 10,
+      "step_s_median": 3.0393,
+      "tokens_per_s": 1347.7,
+      "fwd_s_median": 1.3023,
+      "bwd_s_median": 1.7303,
+      "peak_mem_mib": 13856.1,
+      "watts": 108.5,
+      "loss_first": 1.3556,
+      "loss_last": 1.3063
+    }
+  ]
+}
