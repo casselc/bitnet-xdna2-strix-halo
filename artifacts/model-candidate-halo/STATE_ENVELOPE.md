@@ -220,3 +220,55 @@ per decision on decode alone.
 - Quantisation differs slightly across candidates (Q4_K_M, except Qwen3.5-0.8B
   which is Q4_0 as published by `ggml-org`). llama.cpp's KV cache is f16
   regardless, so state sizes are unaffected; decode throughput is mildly so.
+
+---
+
+## 7. Minimal reproduction of the restore defect
+
+Small enough to hand upstream. Any hybrid/recurrent GGUF and the pinned build
+(`9918 / 390c30775`) reproduce it; LFM2.5-1.2B shows it most clearly because the
+divergence reaches the argmax.
+
+```bash
+llama-server -m lfm2.5-1.2b-q4km.gguf -t 4 -ngl 0 \
+    -c 40960 -np 8 -b 4096 -ub 4096 -tb 16 \
+    --slot-save-path /tmp/state/ --port 8091
+```
+
+Then, all against **slot 0**, with two prompts A and B sharing no long prefix:
+
+```
+1. erase(0); completion(A_prefix, n_predict=1); save(0 -> ckptA)
+2. erase(0);                       restore(0, ckptA); completion(A_prefix + delta)  -> answer_1
+3. erase(0); completion(B_prefix); erase(0); restore(0, ckptA); completion(A_prefix + delta) -> answer_2
+```
+
+`answer_1 != answer_2`, from the identical checkpoint file and the identical
+query. Steps 2 and 3 differ only in what the slot held *before* the erase.
+
+Observable markers, both reported by the server itself:
+
+| | step 2 | step 3 |
+|---|---:|---:|
+| `cache_n` | 1572 | **1568** |
+| output | `' 1\n```\n\nOUTPUT\n '` | `' 1\nRECOMMENDATION'` |
+| max \|Δlogprob\| vs full recompute | 0.00000 | 0.18302 |
+
+Repeating step 2 after step 3 still returns `answer_2`: the slot does not
+recover. A pure-attention model (BitNet-b1.58-2B) run through the identical
+script holds `cache_n` at 1600 and returns 0.00000 on every arm, which is the
+control that rules out numerical noise.
+
+**Likely mechanism, not verified:** the checkpoint holds `prefix + 1` tokens
+while the query shares only `prefix`, so the runtime must drop tokens from the
+restored state. That is legal for an attention KV cache and impossible for a
+recurrent cell, which has no representation of "the state 4 tokens ago". The
+`cache_n` difference between the two arms suggests the runtime settles on
+different reuse lengths depending on slot history and then re-evaluates from a
+state that cannot legally be rolled back. Confirming this needs instrumentation
+inside `llama_memory_recurrent::seq_rm` that this pass did not add.
+
+**Workarounds available today**, in increasing cost: never reuse a slot across
+domains (one slot per domain, capped by `-np`); or take the checkpoint at
+exactly the prompt prefix so no rollback is ever required; or accept a full
+re-prefill per turn, which costs 6-15x.
