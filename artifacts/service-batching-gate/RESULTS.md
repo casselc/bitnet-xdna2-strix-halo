@@ -414,3 +414,65 @@ avoid, and it would have overstated the benefit enormously.
 Fixed with disjoint seed ranges per arm, and the harness now records the server's
 `cache_n` so achieved reuse is reported rather than assumed. The contaminated run is
 preserved as `prefix_reuse_CONTAMINATED.csv` rather than deleted.
+
+## 10. GPU prefill vs GPU decode pressure [MEASURED — the phases differ, the policy does not]
+
+`tools/gpu_phase_gate.py`. The prior conclusion used a mixed workload whose GPU request
+had a ~128-token prompt and a long generation — almost entirely GPU *decode*. The
+controller was therefore never measured under sustained GPU *prefill*. Here the worker
+is driven in a specific phase for the whole cell, with the CPU verifier tenant also
+running, against controller widths t4/t6/t8 (all at `tb16`).
+
+| controller | phase | ctrl TTFT p50 | ctrl TTFT p95 | GPU pp tok/s | GPU tg tok/s | W |
+|---|---|---:|---:|---:|---:|---:|
+| t4 tb16 | idle | 1517.5 | 1530.5 | — | — | 113.2 |
+| t4 tb16 | prefill-2k | 1993.6 | 2146.1 | 260.9 | 14.37 | 119.9 |
+| t4 tb16 | prefill-8k | 1957.4 | 2141.5 | 271.6 | 14.54 | 120.0 |
+| t4 tb16 | **decode** | **2545.7** | 2618.7 | 217.1 | 11.04 | 120.0 |
+| t6 tb16 | idle | 1514.9 | 1519.0 | — | — | 115.3 |
+| t6 tb16 | prefill-2k | 1944.2 | 2140.3 | 257.6 | 14.36 | 119.9 |
+| t6 tb16 | prefill-8k | 2013.8 | 2081.3 | 269.6 | 14.36 | 120.0 |
+| t6 tb16 | **decode** | **2492.7** | 2612.8 | 214.0 | 10.95 | 120.0 |
+| t8 tb16 | idle | 1520.7 | 1532.7 | — | — | 115.8 |
+| t8 tb16 | prefill-2k | 1908.9 | 2001.2 | 255.7 | 14.43 | 119.9 |
+| t8 tb16 | prefill-8k | 1873.0 | 2040.8 | 267.4 | 14.47 | 119.9 |
+| t8 tb16 | **decode** | **2505.9** | 2660.4 | 215.9 | 11.10 | 119.9 |
+
+### The phases really are different — and the expected direction is wrong [MEASURED]
+
+**GPU decode hurts the controller more than GPU prefill does**, consistently at every
+width:
+
+| phase | controller TTFT vs idle |
+|---|---|
+| prefill-2k | +26% to +31% |
+| prefill-8k | +23% to +33% |
+| **decode** | **+64% to +68%** |
+
+The intuition that a large dense prefill matmul would be the worse neighbour is wrong
+here. GPU decode streams the entire 16.7 GiB of worker weights for every token, so it
+holds memory bandwidth continuously; GPU prefill reads those weights once per large
+batch and is comparatively compute-dense. The controller is bandwidth-bound (§8), so
+the continuously-streaming tenant is the one that hurts. **Isolating the phases was
+worth doing: the prior mixed workload happened to be testing the harsher phase, but
+for the wrong reason and without knowing it.**
+
+### But no phase favours narrower controller threads [MEASURED]
+
+Within any phase, the spread across t4/t6/t8 is small and does not favour narrow:
+
+- prefill-2k: 1993.6 / 1944.2 / 1908.9 — **t8 best**
+- prefill-8k: 1957.4 / 2013.8 / 1873.0 — **t8 best**
+- decode: 2545.7 / 2492.7 / 2505.9 — t6 best by 0.5%, inside dispersion
+- idle: 1517.5 / 1514.9 / 1520.7 — identical
+
+The between-phase effect is 23–68%; the between-width effect inside a phase is at most
+4.5% and has no consistent sign. GPU throughput is likewise unaffected by controller
+width (pp 255.7–271.6, tg 10.95–14.54 grouped by phase, not by width).
+
+**PHASE-AWARE THREAD POLICY NOT JUSTIFIED.** This confirms `service-cotenancy`'s
+conclusion, but now against the workload it was missing, and with the mechanism
+identified. It is also the expected result given §8: at `tb16` every width uses the
+same 16 prompt threads, and `t` only sets decode width, which §7 showed is not in the
+TTFT budget. A phase-aware policy would be switching the parameter that does not
+matter.
