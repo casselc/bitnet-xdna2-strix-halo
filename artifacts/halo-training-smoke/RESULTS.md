@@ -5,6 +5,7 @@
 | branch base | `gpu-cotenancy` @ `fbd8bf00108480c68919752fbb521fafd786d47d` |
 | branch | `halo-training-smoke` |
 | purpose | prove a real forward/backward/optimizer/checkpoint/reload/resume loop on THIS box |
+| index of all evidence | `artifacts/EVIDENCE_INDEX.md` on `controller-state-envelope` |
 
 This is plumbing validation, not a quality experiment. No judgement of model output.
 
