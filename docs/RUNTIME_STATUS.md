@@ -71,16 +71,36 @@ to beat.
 
 ## Deferred / open
 
-- **Real Radeon 8060S co-tenancy** — the next question. Does a GPU worker
-  coexist with the NPU controller on shared LPDDR5X?
+- ~~**Real Radeon 8060S co-tenancy** — the next question.~~ **ANSWERED** on
+  `gpu-cotenancy` and again on `controller-state-envelope` §7: a GPU worker
+  coexists fine. The NPU's resident footprint costs the GPU nothing, and a 4x
+  larger controller prompt cache (8 -> 32 GiB) leaves GPU decode identical at
+  11.76 tok/s. Local GPU *training* also coexists, at +0.7% controller TTFT
+  (`halo-training-smoke`). See `artifacts/EVIDENCE_INDEX.md`.
 - **Packed ternary residency.** The runtime expands packed weights to ~2.0 GiB
   of resident int8. Only justified if co-tenancy shows it matters.
-- **Hardware-aware controller student / BitDistill.** Not started; would use the
-  backend constraints now measured.
+- **Hardware-aware controller student / BitDistill.** Not started. The backend
+  constraints are now measured, and two of them bear directly on it:
+  a warm controller engages the NPU **0% of the time** (work sits ~120 tokens,
+  far below `kMTile = 1024`), and **model geometry is not a lever for NPU
+  throughput** — a 2048/6144/2048 candidate matches the current 2560/6912/2560
+  at 9.23 vs 9.25 TOPS, a 1024-wide one is worse, and `N <= 4096` is a hard
+  single-kernel DMA-stride limit for any of them
+  (`controller-state-envelope` §9 and Appendix). So the student's size should be
+  chosen for quality, memory and CPU decode speed, not for XDNA2.
 - **GEMM tile `64x128x64`** — measured 1.038x faster with 8 KiB less L1 and 6x
   lower variance, but **not promoted**: under 1% of prefill on its own. Use it
   if anything rebuilds the xclbins anyway (`gemm-tile-resweep`).
 - **NPU decode** — only if a future model or representation changes the case.
+- **Local training on this box** — now **READY**, not deferred: system ROCm 7.1
+  plus `torch 2.10.0+rocm7.0` trains LoRA on gfx1151 at 2819 tok/s (0.6B) and
+  1480 tok/s (1.7B). Requires shadowing the wheel's bundled
+  `libhsa-runtime64.so`, which a `pip --force-reinstall` would undo
+  (`halo-training-smoke`).
+- **Admission control** — measured but deliberately not implemented. Two rules
+  are needed, not one: bound the resident working set by
+  `cache_ram / (state_tokens x 75 KiB)`, and bound arrivals near 50% of
+  closed-loop capacity (`controller-state-envelope` §5, §8).
 
 ---
 

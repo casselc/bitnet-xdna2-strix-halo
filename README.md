@@ -8,6 +8,18 @@ after three rounds of optimization.** See [`artifacts/VERDICT.md`](artifacts/VER
 for the original gate and [`artifacts/e2e/concurrent_results.md`](artifacts/e2e/concurrent_results.md)
 for the current numbers.
 
+> **Since the MVP.** That answer is about **cold prefill**, and it still holds. But
+> the work since has measured the *service* the controller actually runs in, and the
+> operational picture is different: with a warm state spine, requests evaluate ~120
+> tokens — far below the 1024-token offload threshold — so a **warm controller
+> engages the NPU 0% of the time** and answers in **231 ms** instead of 1470 ms. The
+> NPU earns its keep on cold/large-context misses, not in steady state.
+>
+> All of that evidence lives on frozen branches, not on `main`. Start at
+> **[`artifacts/EVIDENCE_INDEX.md`](artifacts/EVIDENCE_INDEX.md)** — it maps all 17
+> branches, the corrections chain (which claims were later found wrong, and where),
+> and the current headline numbers.
+
 - Real `BitNet-b1.58-2B-4T` runs NPU-assisted prefill and CPU decode.
 - The NPU kernel is **bit-exact** against the CPU reference, and end-to-end
   **perplexity is identical to 4 decimal places** while 830 matmuls run on the NPU.
