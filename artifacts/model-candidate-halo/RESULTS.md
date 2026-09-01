@@ -123,6 +123,26 @@ branch trained a ~20-example smoke batch of short sequences, where the GPU was
 busy only in bursts. At 98-99% sustained GPU utilisation the cost appears. The
 frozen record is not rewritten; the scope of its claim is narrowed.
 
+## Concurrency: a second domain is not worth it, for either candidate
+
+Two points only, each client owning its own domain and its own slot — sharing a
+domain would measure deduplication rather than concurrency.
+
+| model | c | decisions/s | decision p50 | p95 |
+|---|---:|---:|---:|---:|
+| LFM2.5-1.2B | 1 | 5.920 | 169.5 ms | 169.9 ms |
+| LFM2.5-1.2B | 2 | 6.739 | 290.0 ms | 302.6 ms |
+| | | **1.138x** | **1.711x** | **1.781x** |
+| Qwen3.5-0.8B | 1 | 5.205 | 192.9 ms | 195.7 ms |
+| Qwen3.5-0.8B | 2 | 5.590 | 352.8 ms | 366.5 ms |
+| | | **1.074x** | **1.829x** | **1.872x** |
+
+Doubling concurrency buys **7-14% throughput for 71-83% more latency** on both.
+This is the same "concurrency ~= 1" shape `service-cotenancy` measured for the
+incumbent, reproduced on two different architectures — so it is a property of a
+CPU-bound prefill on this part, not of any model. **Run one domain at a time and
+scale by adding time, not threads.**
+
 ## Low-bit path: LFM2.5 QAD-Q4 costs nothing on this hardware
 
 LiquidAI publishes a **quantisation-aware distilled** `QAD-Q4_0` GGUF alongside
@@ -258,7 +278,7 @@ faithful, so any hybrid must beat it by enough to justify that loss.
 - **Task 10 at the 2.6B size** — the 1.2B `Q4_0`/`QAD-Q4_0` pair was compared;
   the 2.6B pair did not download.
 - **Task 7 at the 2-4B tier** — BF16 checkpoints did not finish downloading.
-- **Concurrency c=1 vs c=2** for the top two candidates.
+
 - **LFM2.5-1.2B checkpoint resume** — only Qwen3.5-0.8B was resume-tested.
 - **Teacher-tier inference smoke** — recon only; no local 27-30B model was run.
 - Nemotron's state-semantics probes, abandoned after the decode measurement made
