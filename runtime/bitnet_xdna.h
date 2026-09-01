@@ -54,6 +54,35 @@ struct bitnet_xdna_lease_stats {
 void bitnet_xdna_lease_snapshot(struct bitnet_xdna_lease_stats *out);
 int  bitnet_xdna_lease_stats_enabled(void);
 
+/* Token-dimension (ne11) histogram at the ggml/XDNA boundary.
+ *
+ * Answers two questions the service benchmarks could not: what token batch
+ * sizes actually reach offloadable linear nodes, and why a 1954-token prefill
+ * produces ~146 NPU invocations rather than the 210 (7 I2_S matmuls x 30
+ * layers) the architecture predicts.
+ *
+ * Every I2_S 2-D mul_mat node is observed once per graph, from thread 0 only --
+ * the offload gate is evaluated by all nth threads, so observing inside
+ * worth_it() would overcount by a factor of nth.
+ *
+ * Buckets are log2(ne11): bucket b holds ne11 in [2^b, 2^(b+1)). */
+#define BITNET_XDNA_NE11_BUCKETS 20
+
+struct bitnet_xdna_ne11_stats {
+    uint64_t seen[BITNET_XDNA_NE11_BUCKETS];      /* every I2_S 2-D node      */
+    uint64_t worth[BITNET_XDNA_NE11_BUCKETS];     /* passed the token gate    */
+    uint64_t offloaded[BITNET_XDNA_NE11_BUCKETS]; /* also a supported shape   */
+    uint64_t nodes_seen, nodes_worth, nodes_offloaded;
+    uint64_t declined_small;  /* ne11 below the token threshold */
+    uint64_t declined_shape;  /* big enough, but no plan for (K, N) */
+};
+
+/* Observe one node. Call from thread 0 only, with the two gate predicates
+ * already evaluated, so short-circuit semantics at the call site are unchanged. */
+void bitnet_xdna_observe_node(int64_t n_tokens, int worth, int offloaded);
+void bitnet_xdna_ne11_snapshot(struct bitnet_xdna_ne11_stats *out);
+int  bitnet_xdna_ne11_stats_enabled(void);
+
 /* Can this (K,N) be served? Shapes are fixed by the AOT-compiled xclbins. */
 int bitnet_xdna_supports(int64_t K, int64_t N);
 

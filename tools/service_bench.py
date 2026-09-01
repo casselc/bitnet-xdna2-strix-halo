@@ -85,6 +85,11 @@ class Req:
                  concurrency=self.conc, err=self.err or "")
         if self.t_submit and self.t_end:
             d["total_ms"] = round((self.t_end - self.t_submit) * 1e3, 2)
+            d["client_total_ms"] = d["total_ms"]
+        # Real client-observed first-token arrival, from the streaming path.
+        if self.t_submit and self.t_first:
+            d["client_ttft_ms"] = round((self.t_first - self.t_submit) * 1e3, 2)
+            d["ttft_ms"] = d["client_ttft_ms"]   # preferred TTFT when streaming
         s = self.server
         for k_out, k_in in (("prompt_n", "prompt_n"), ("gen_n", "predicted_n"),
                             ("prompt_ms", "prompt_ms"),
@@ -95,26 +100,73 @@ class Req:
             svc = s["prompt_ms"] + s["predicted_ms"]
             d["service_ms"] = round(svc, 2)
             if "total_ms" in d:
-                # Everything the client waited that the server did not spend
-                # working: admission queue plus HTTP transport.
-                d["queue_ms"] = round(d["total_ms"] - svc, 2)
-            # TTFT as the server sees it: prompt processing plus one token.
+                # NOT a measured queue wait. This is client wall minus server
+                # compute: it bundles admission queueing, scheduler delay, HTTP
+                # transport and any client-side scheduling. Calling it
+                # "queue_ms" overclaims what the number can support, so it is
+                # named for what it actually is. Direct admission timing comes
+                # from the /slots sampler instead.
+                d["non_compute_wall_ms"] = round(d["total_ms"] - svc, 2)
+            # DERIVED TTFT, kept for continuity with service-cotenancy. This is
+            # a server-side reconstruction (prompt processing plus one token's
+            # share of generation), NOT an observed first-token arrival: it
+            # cannot see admission queueing or transport. Retained under an
+            # explicit name so it is never mistaken for the measured value.
             per_tok = (s["predicted_ms"] / s["predicted_n"]
                        if s.get("predicted_n") else 0.0)
-            d["ttft_ms"] = round(s["prompt_ms"] + per_tok, 2)
+            d["ttft_derived_ms"] = round(s["prompt_ms"] + per_tok, 2)
             if s.get("predicted_per_second"):
                 d["gen_tok_s"] = round(s["predicted_per_second"], 3)
         d.update(self.chain)
         return d
 
 
-def run_controller(rid, threads, conc, n_predict, prompt):
+def post_stream(base, path, payload, timeout=600):
+    """Server-sent-events POST that returns (first_chunk_time, final_json).
+
+    The point is the FIRST timestamp: everything before it -- admission,
+    scheduling, prompt processing, transport -- is what the client actually
+    waits for a first token, which a server-side reconstruction cannot see.
+    """
+    body = dict(payload); body["stream"] = True
+    req = urllib.request.Request(base + path, data=json.dumps(body).encode(),
+                                 headers={"Content-Type": "application/json"})
+    t_first, final = None, {}
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        for raw in resp:
+            if not raw.startswith(b"data:"):
+                continue
+            chunk = raw[5:].strip()
+            if not chunk or chunk == b"[DONE]":
+                continue
+            try:
+                j = json.loads(chunk)
+            except json.JSONDecodeError:
+                continue
+            # Only a chunk that actually carries generated content marks the
+            # first token; llama.cpp may emit bookkeeping chunks first.
+            if t_first is None and (j.get("content") or j.get("tokens")):
+                t_first = time.time()
+            if j.get("timings"):
+                final = j
+            if j.get("stop"):
+                final = j
+    return t_first, final
+
+
+def run_controller(rid, threads, conc, n_predict, prompt, cache=False,
+                   stream=True, extra=None):
     r = Req(rid, "C", threads, conc)
+    body = dict(prompt=prompt, n_predict=n_predict, temperature=0,
+                seed=42, cache_prompt=cache)
+    if extra:
+        body.update(extra)
     r.t_submit = time.time()
     try:
-        d = post(CTRL, "/completion",
-                 dict(prompt=prompt, n_predict=n_predict, temperature=0,
-                      seed=42, cache_prompt=False))
+        if stream:
+            r.t_first, d = post_stream(CTRL, "/completion", body)
+        else:
+            d = post(CTRL, "/completion", body)
         r.server = d.get("timings", {})
     except Exception as e:
         r.err = f"{type(e).__name__}: {str(e)[:80]}"
@@ -194,6 +246,116 @@ def summarize(rows, key):
     return {f"{key}_p50": pct(v, .50), f"{key}_p95": pct(v, .95),
             f"{key}_p99": pct(v, .99), f"{key}_mean": round(st.mean(v), 2),
             f"{key}_max": round(max(v), 2)}
+
+
+class SlotSampler:
+    """Poll /slots during a cell to observe admission directly.
+
+    service-cotenancy inferred queueing from `client wall - server compute`,
+    which bundles transport and client scheduling into a number it then called
+    "queue". Sampling /slots distinguishes the states the server actually
+    reports: how many slots are processing versus idle, so a claim about
+    admission rests on server state rather than subtraction.
+    """
+
+    def __init__(self, base=CTRL, hz=20.0):
+        self.base, self.dt = base, 1.0 / hz
+        self._stop = threading.Event()
+        self.samples = []
+        self._t = None
+
+    def _run(self):
+        while not self._stop.is_set():
+            try:
+                with urllib.request.urlopen(self.base + "/slots", timeout=5) as r:
+                    slots = json.loads(r.read())
+                if isinstance(slots, dict):
+                    slots = slots.get("slots", [])
+                busy = sum(1 for x in slots
+                           if x.get("is_processing") or x.get("state") not in (0, None))
+                self.samples.append((time.time(), busy, len(slots)))
+            except Exception:
+                pass
+            self._stop.wait(self.dt)
+
+    def __enter__(self):
+        self._t = threading.Thread(target=self._run, daemon=True)
+        self._t.start()
+        return self
+
+    def __exit__(self, *a):
+        self._stop.set()
+        if self._t:
+            self._t.join(timeout=3)
+
+    def summary(self):
+        if not self.samples:
+            return {}
+        busy = [b for _, b, _ in self.samples]
+        total = self.samples[0][2]
+        return dict(slots_total=total, slots_samples=len(busy),
+                    slots_busy_mean=round(sum(busy) / len(busy), 3),
+                    slots_busy_max=max(busy),
+                    slots_busy_p50=pct(busy, .5), slots_busy_p95=pct(busy, .95),
+                    slots_all_idle_frac=round(sum(1 for b in busy if b == 0) / len(busy), 3))
+
+
+class Ne11Window:
+    """Difference the runtime's ne11 histogram across a measurement window.
+
+    Answers what token-batch sizes actually reach offloadable linear nodes --
+    the question the service benchmarks could not: whether two concurrent
+    ~1954-token requests ever form one ~3908-token graph, or stay two graphs.
+
+    Same file-differencing approach as LeaseWindow. A torn row (the writer
+    flushes from inside the runtime, the reader may catch a partial line) is
+    SKIPPED, not treated as end-of-file: breaking there freezes the snapshot and
+    every window silently reports a zero delta.
+    """
+
+    def __init__(self, path):
+        self.path = Path(path) if path else None
+        self.before = self.after = []
+
+    def _rows(self):
+        if not self.path or not self.path.exists():
+            return []
+        out = []
+        with open(self.path) as f:
+            for r in csv.DictReader(f):
+                try:
+                    out.append({k: int(v) for k, v in r.items() if v != ""})
+                except (TypeError, ValueError):
+                    continue          # torn row: skip it, do not stop reading
+        return out
+
+    def __enter__(self):
+        self.before = self._rows()
+        return self
+
+    def __exit__(self, *a):
+        self.after = self._rows()
+
+    def delta(self):
+        a = self.after[-1] if self.after else None
+        if not a:
+            return {}
+        b = self.before[-1] if self.before else {k: 0 for k in a}
+        d = {}
+        for k in ("nodes_seen", "nodes_worth", "nodes_offloaded", "declined_shape"):
+            d["ne11_" + k] = a.get(k, 0) - b.get(k, 0)
+        d["ne11_declined_small"] = d["ne11_nodes_seen"] - d["ne11_nodes_worth"]
+        buckets = {}
+        for k in a:
+            if k.startswith("offl_ge_"):
+                v = a.get(k, 0) - b.get(k, 0)
+                if v > 0:
+                    buckets[int(k.rsplit("_", 1)[1])] = v
+        d["ne11_offloaded_hist"] = ";".join(f"{k}:{v}" for k, v in sorted(buckets.items()))
+        # The largest ne11 that actually reached the NPU in this window. This is
+        # the number that decides whether batch formation combined two requests.
+        d["ne11_max_offloaded_bucket"] = max(buckets) if buckets else 0
+        return d
 
 
 class LeaseWindow:
@@ -407,7 +569,8 @@ def cell(label, make_req, n, conc, lease_csv, jsonl, threads):
     rec["gen_tok_s_agg"] = round(tot_gen / wall, 2) if wall else None
     tot_pp = sum(r.get("prompt_n", 0) or 0 for r in ok)
     rec["prompt_tok_s_agg"] = round(tot_pp / wall, 2) if wall else None
-    for k in ("total_ms", "ttft_ms", "queue_ms", "service_ms", "chain_ms"):
+    for k in ("total_ms", "ttft_ms", "client_ttft_ms", "non_compute_wall_ms",
+              "service_ms", "chain_ms"):
         rec.update(summarize(ok, k))
     rec.update(lw.delta())
     return rec, rows
@@ -464,7 +627,7 @@ def main():
             print(f"  t{a.threads} c={c:<2} req/s={rec['req_per_s']:<6} "
                   f"ttft p50={rec.get('ttft_ms_p50')} p95={rec.get('ttft_ms_p95')} "
                   f"total p50={rec.get('total_ms_p50')} p95={rec.get('total_ms_p95')} "
-                  f"queue p95={rec.get('queue_ms_p95')} "
+                  f"noncompute p95={rec.get('non_compute_wall_ms_p95')} "
                   f"leasewait={rec.get('lease_wait_mean_us')}us "
                   f"cont={rec.get('lease_contended_frac')} {rec['watts']}W",
                   flush=True)
@@ -509,7 +672,7 @@ def main():
                 if not sub:
                     continue
                 rec[f"{cls}_n"] = len(sub)
-                for k in ("total_ms", "ttft_ms", "queue_ms", "chain_ms"):
+                for k in ("total_ms", "ttft_ms", "client_ttft_ms", "non_compute_wall_ms", "chain_ms"):
                     for kk, vv in summarize(sub, k).items():
                         rec[f"{cls}_{kk}"] = vv
             out.append(rec)

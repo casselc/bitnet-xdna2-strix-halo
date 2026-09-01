@@ -75,18 +75,36 @@ case "${1:-}" in
     stop_pidfile "$RUN/ctrl.pid"
     assert_port_free 8081
     : > "$RUN/lease.csv"
+    # NOTE: a conditional env prefix (${VAR:+NAME=val}) does NOT work here --
+    # after expansion bash treats it as the command name, not an assignment.
+    # Export explicitly instead.
+    if [ -n "${NE11_CSV:-}" ]; then export BITNET_XDNA_NE11_CSV="$NE11_CSV"; : > "$NE11_CSV"; fi
+    if [ -n "${NE11_STATS:-}" ]; then export BITNET_XDNA_NE11_STATS=1; fi
+    if [ -n "${NE11_EVERY:-}" ]; then export BITNET_XDNA_NE11_EVERY="$NE11_EVERY"; fi
     BITNET_XDNA=1 BITNET_XDNA_STATS=1 \
     BITNET_XDNA_LEASE_STATS=1 \
     BITNET_XDNA_LEASE_CSV="$RUN/lease.csv" \
     BITNET_XDNA_LEASE_EVERY="${LEASE_EVERY:-32}" \
     nohup "$CTRL_BIN" -m "$CTRL_MODEL" -t "$T" -ngl 0 \
         -c "${CTRL_CTX:-20480}" -np "${CTRL_SLOTS:-8}" \
-        -ub 2048 -b 2048 --host 127.0.0.1 --port 8081 --no-webui \
+        -b "${CTRL_B:-2048}" -ub "${CTRL_UB:-2048}" \
+        ${CTRL_TB:+-tb "$CTRL_TB"} \
+        --host 127.0.0.1 --port 8081 --no-webui \
         > "$RUN/ctrl.log" 2>&1 < /dev/null &
     echo $! > "$RUN/ctrl.pid"
     wait_health 8081 180 || { echo "controller FAILED to become healthy"; tail -5 "$RUN/ctrl.log"; exit 1; }
     assert_owner 8081 "$(cat "$RUN/ctrl.pid")"
-    echo "controller up t=$T pid=$(cat "$RUN/ctrl.pid")"
+    # /health returning ok does NOT mean the XDNA weights are resident: they are
+    # expanded and uploaded lazily on the first qualifying prefill. Measuring
+    # immediately after health contaminates the first cell of every restart, so
+    # warm explicitly and prove dispatches actually happened.
+    if [ "${CTRL_WARMUP:-1}" = "1" ]; then
+        "$R/tools/service_warmup.py" --port 8081 --label "t=$T" \
+            --out "${WARMUP_OUT:-$RUN/warmup.json}" \
+            || { echo "controller warmup FAILED"; exit 1; }
+    fi
+    echo "controller up t=$T tb=${CTRL_TB:-<=t} b=${CTRL_B:-2048} ub=${CTRL_UB:-2048}" \
+         "np=${CTRL_SLOTS:-8} pid=$(cat "$RUN/ctrl.pid")"
     ;;
   start-work)
     stop_pidfile "$RUN/work.pid"

@@ -447,6 +447,80 @@ static void print_stats_atexit(void) {
  * first separates an UNCONTENDED acquisition (the common case, and the one that
  * must stay cheap) from a contended one, and only the contended path pays for
  * timing. */
+/* ne11 histogram at the ggml/XDNA boundary. See bitnet_xdna.h.
+ *
+ * Off by default and gated on a relaxed atomic bool, like the lease stats, so
+ * the disabled path costs one predictable load. Observed from thread 0 only. */
+std::atomic<bool>     g_ne11_stats{false};
+std::atomic<uint64_t> g_ne11_seen[BITNET_XDNA_NE11_BUCKETS];
+std::atomic<uint64_t> g_ne11_worth[BITNET_XDNA_NE11_BUCKETS];
+std::atomic<uint64_t> g_ne11_offl[BITNET_XDNA_NE11_BUCKETS];
+std::atomic<uint64_t> g_ne11_nodes{0};
+std::atomic<uint64_t> g_ne11_nodes_worth{0};
+std::atomic<uint64_t> g_ne11_nodes_offl{0};
+std::atomic<uint64_t> g_ne11_decl_small{0};
+std::atomic<uint64_t> g_ne11_decl_shape{0};
+FILE                 *g_ne11_csv = nullptr;
+uint64_t              g_ne11_dump_every = 4096;
+
+static int ne11_bucket(int64_t n) {
+    int b = 0;
+    for (int64_t v = n; v > 1 && b < BITNET_XDNA_NE11_BUCKETS - 1; v >>= 1) ++b;
+    return b;
+}
+
+void bitnet_xdna_observe_node(int64_t n_tokens, int worth, int offloaded) {
+    if (!g_ne11_stats.load(std::memory_order_relaxed) || n_tokens <= 0) return;
+    const int b = ne11_bucket(n_tokens);
+    g_ne11_seen[b].fetch_add(1, std::memory_order_relaxed);
+    const uint64_t n = g_ne11_nodes.fetch_add(1, std::memory_order_relaxed) + 1;
+    if (worth) {
+        g_ne11_worth[b].fetch_add(1, std::memory_order_relaxed);
+        g_ne11_nodes_worth.fetch_add(1, std::memory_order_relaxed);
+        if (offloaded) {
+            g_ne11_offl[b].fetch_add(1, std::memory_order_relaxed);
+            g_ne11_nodes_offl.fetch_add(1, std::memory_order_relaxed);
+        } else {
+            g_ne11_decl_shape.fetch_add(1, std::memory_order_relaxed);
+        }
+    } else {
+        g_ne11_decl_small.fetch_add(1, std::memory_order_relaxed);
+    }
+    if (g_ne11_csv && (n % g_ne11_dump_every) == 0) {
+        struct bitnet_xdna_ne11_stats st;
+        bitnet_xdna_ne11_snapshot(&st);
+        std::fprintf(g_ne11_csv, "%llu,%llu,%llu,%llu,%llu",
+                     (unsigned long long)std::chrono::duration_cast<std::chrono::nanoseconds>(
+                         std::chrono::steady_clock::now().time_since_epoch()).count(),
+                     (unsigned long long)st.nodes_seen,
+                     (unsigned long long)st.nodes_worth,
+                     (unsigned long long)st.nodes_offloaded,
+                     (unsigned long long)st.declined_shape);
+        for (int i = 0; i < BITNET_XDNA_NE11_BUCKETS; ++i)
+            std::fprintf(g_ne11_csv, ",%llu", (unsigned long long)st.offloaded[i]);
+        std::fprintf(g_ne11_csv, "\n");
+        std::fflush(g_ne11_csv);
+    }
+}
+
+void bitnet_xdna_ne11_snapshot(struct bitnet_xdna_ne11_stats *o) {
+    if (!o) return;
+    for (int i = 0; i < BITNET_XDNA_NE11_BUCKETS; ++i) {
+        o->seen[i]      = g_ne11_seen[i].load(std::memory_order_relaxed);
+        o->worth[i]     = g_ne11_worth[i].load(std::memory_order_relaxed);
+        o->offloaded[i] = g_ne11_offl[i].load(std::memory_order_relaxed);
+    }
+    o->nodes_seen      = g_ne11_nodes.load(std::memory_order_relaxed);
+    o->nodes_worth     = g_ne11_nodes_worth.load(std::memory_order_relaxed);
+    o->nodes_offloaded = g_ne11_nodes_offl.load(std::memory_order_relaxed);
+    o->declined_small  = g_ne11_decl_small.load(std::memory_order_relaxed);
+    o->declined_shape  = g_ne11_decl_shape.load(std::memory_order_relaxed);
+}
+
+int bitnet_xdna_ne11_stats_enabled(void) {
+    return g_ne11_stats.load(std::memory_order_relaxed) ? 1 : 0;
+}
+
 std::atomic<bool>     g_lease_stats{false};
 std::atomic<uint64_t> g_lease_acq{0};        // total acquisitions
 std::atomic<uint64_t> g_lease_immediate{0};  // uncontended (try_lock succeeded)
@@ -565,6 +639,23 @@ int bitnet_xdna_available(void) {
     if (const char *le = std::getenv("BITNET_XDNA_LEASE_EVERY")) {
         const long v = std::strtol(le, nullptr, 10);
         if (v > 0) g_lease_dump_every = (uint64_t)v;
+    }
+    if (env_truthy("BITNET_XDNA_NE11_STATS"))
+        g_ne11_stats.store(true, std::memory_order_relaxed);
+    if (const char *ne = std::getenv("BITNET_XDNA_NE11_EVERY")) {
+        const long v = std::strtol(ne, nullptr, 10);
+        if (v > 0) g_ne11_dump_every = (uint64_t)v;
+    }
+    if (const char *np = std::getenv("BITNET_XDNA_NE11_CSV")) {
+        g_ne11_csv = std::fopen(np, "w");
+        if (g_ne11_csv) {
+            std::fprintf(g_ne11_csv, "wall_ns,nodes_seen,nodes_worth,nodes_offloaded,declined_shape");
+            for (int i = 0; i < BITNET_XDNA_NE11_BUCKETS; ++i)
+                std::fprintf(g_ne11_csv, ",offl_ge_%d", 1 << i);
+            std::fprintf(g_ne11_csv, "\n");
+            std::fflush(g_ne11_csv);
+            g_ne11_stats.store(true, std::memory_order_relaxed);
+        }
     }
     if (const char *lp = std::getenv("BITNET_XDNA_LEASE_CSV")) {
         g_lease_csv = std::fopen(lp, "w");
