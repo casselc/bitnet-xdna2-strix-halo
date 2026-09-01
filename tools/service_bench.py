@@ -91,8 +91,11 @@ class Req:
             d["client_ttft_ms"] = round((self.t_first - self.t_submit) * 1e3, 2)
             d["ttft_ms"] = d["client_ttft_ms"]   # preferred TTFT when streaming
         s = self.server
+        # The server's own semantics: prompt_n is the EVALUATED token count and
+        # cache_n is the REUSED count, so tokens supplied = prompt_n + cache_n.
+        # They are not total-and-subset.
         for k_out, k_in in (("prompt_n", "prompt_n"), ("gen_n", "predicted_n"),
-                            ("prompt_ms", "prompt_ms"),
+                            ("prompt_ms", "prompt_ms"), ("reused_n", "cache_n"),
                             ("gen_ms", "predicted_ms")):
             if k_in in s:
                 d[k_out] = round(s[k_in], 2) if isinstance(s[k_in], float) else s[k_in]

@@ -350,3 +350,67 @@ tests.
 
 **This is the single largest effect measured in this pass, and it is a pure
 configuration change: no kernel work, no scheduler work, one flag that was never set.**
+
+## 9. Realistic prefix reuse [MEASURED]
+
+`tools/prefix_reuse_gate.py`. Not the easy version: each request carries a **distinct
+volatile suffix**, so this measures prefix reuse rather than deduplication of an
+identical prompt. Stable prefix = controller instructions + action schema + fixed
+topology; volatile suffix = current state, regenerated per request. Total held near
+1954 tokens. Config `t8/tb16 b4096 ub4096 np8`, `n_predict=8`, 10 requests per cell.
+
+| designed reuse | cache | evaluated | reused | TTFT p50 | prompt mean | XDNA nodes offloaded | W |
+|---:|---|---:|---:|---:|---:|---:|---:|
+| 0% | off | 2063.5 | 0 | 1644.5 | 1618.4 | 1470 | 111.0 |
+| 0% | on | 1945.0 | 120 | 1529.4 | 1508.9 | 1470 | 114.4 |
+| 50% | off | 1943.4 | 0 | 1452.4 | 1453.4 | 1470 | 113.5 |
+| 50% | on | 958.3 | 984 | **1033.2** | 1025.8 | **0** | 113.1 |
+| 75% | off | 1941.6 | 0 | 1429.7 | 1440.1 | 1470 | 112.3 |
+| 75% | on | 478.5 | 1464 | **581.6** | 579.8 | **0** | 109.7 |
+| 90% | off | 1968.6 | 0 | 1461.6 | 1476.4 | 1470 | 114.4 |
+| 90% | on | 192.8 | 1776 | **265.1** | 262.8 | **0** | 100.9 |
+
+**At 90% reuse, TTFT falls from 1461.6 ms to 265.1 ms — 5.5x, and −13.5 W.** The
+achieved reuse matches the design (1776 of 1969 tokens reused), so this is a genuine
+prefix effect, not an artefact.
+
+### XDNA drops out on its own, exactly where the threshold predicts [MEASURED]
+
+The runtime declines the NPU below `kMTile = 1024` evaluated tokens. Watch
+`ne11_nodes_offloaded` collapse:
+
+- 0% reuse: 1945 tokens still evaluated -> **1470 nodes offloaded**, NPU engaged
+- 50% reuse: 958 evaluated (below 1024) -> **0 nodes offloaded**
+- 75% reuse: 478 evaluated -> **0**
+- 90% reuse: 193 evaluated -> **0**
+
+This is the natural split the brief anticipated, and it needed no forcing:
+
+| request kind | evaluated tokens | path | TTFT |
+|---|---:|---|---:|
+| cold / large context miss | ~1950 | CPU + NPU hybrid | ~1460 ms |
+| warm prefix / small state delta | ~190 | CPU only | ~265 ms |
+
+The crossover for a 1954-token controller prompt is **~47% reuse**: above it the
+uncached suffix falls under 1024 tokens and the offload correctly declines. The NPU
+was not forced onto a tiny suffix, and should not be — the CPU-only warm path is
+5.5x faster than the hybrid cold path.
+
+**Prefix reuse is worth far more than any hardware or batching change measured in this
+pass**: 5.5x against the ~1.15x from lifting the batch ceiling and the ~1.6x from
+fixing `-tb`. Note also that all three compose in the same direction — each one
+reduces evaluated tokens or widens the threads that process them — and the two that
+help most both end with the NPU idle.
+
+### A contamination bug caught before it was published [CORRECTION]
+
+The first run of this experiment reported `eval = 1 token, TTFT 60.8 ms` at 0% reuse
+with caching on — a full cache hit where the prompts were supposed to be distinct.
+The cause: both arms used the same seeds (`1000 + i`), so the `cache=True` arm re-sent
+the exact prompts the `cache=False` arm had just warmed. It was measuring
+deduplication of an identical prompt, which is precisely what this task exists to
+avoid, and it would have overstated the benefit enormously.
+
+Fixed with disjoint seed ranges per arm, and the harness now records the server's
+`cache_n` so achieved reuse is reported rather than assumed. The contaminated run is
+preserved as `prefix_reuse_CONTAMINATED.csv` rather than deleted.
