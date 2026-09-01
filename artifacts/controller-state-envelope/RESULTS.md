@@ -391,3 +391,116 @@ Not implemented tonight — this is the input for that work:
 4. **Rate, not just residency, needs a cap**: even at 100% hit rate, offered load above
    ~75% of closed-loop capacity degrades the median 6.4x and above ~90% is unstable
    (§5).
+
+## 7. GPU co-tenancy at large prompt-cache budget [MEASURED]
+
+`tools/gpu_cache_residency.py`. This is why the cache-RAM question belongs on this
+machine: the Radeon 8060S is an iGPU on unified memory, so the host-side prompt cache
+and the worker's GTT come out of the same 122 GiB. The **fill** phase and the
+**resident steady-state** phase are measured separately — filling hundreds of domains
+is itself a heavy prefill workload, and judging GPU decode during it would measure the
+fill.
+
+| cache | domains | phase | GPU | ctrl TTFT p50 | ctrl TTFT p95 | GPU decode tok/s | W | GTT MiB | mem avail | swap |
+|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---:|
+| 8 GiB | 58 | fill | idle | — | — | — | 114.5 | 59805 | 31621 | 8191 |
+| 8 GiB | 58 | steady | idle | 230.6 | 243.1 | — | 96.0 | 59805 | 31604 | 8191 |
+| 8 GiB | 58 | steady | decode | 329.4 | 365.6 | **11.76** | 118.7 | 59814 | 31060 | 8191 |
+| 32 GiB | 251 | fill | idle | — | — | — | 115.5 | 59814 | 6214 | 8191 |
+| 32 GiB | 251 | steady | idle | 232.7 | 246.7 | — | 95.9 | 59814 | 6104 | 8191 |
+| 32 GiB | 251 | steady | decode | 334.9 | 353.4 | **11.76** | 118.9 | 59814 | 6634 | 8191 |
+
+**Buying 4.3x more warm controller domains costs the GPU worker exactly nothing.**
+Decode throughput is **11.76 tok/s at both 8 GiB and 32 GiB** — identical to three
+significant figures. Controller TTFT under GPU decode is likewise unchanged
+(329.4 vs 334.9 ms, +1.7%), as is power (118.7 vs 118.9 W) and GTT (59814 MiB, flat).
+
+**So this is a straightforward service-capacity knob**, with one real limit that is
+*memory headroom, not performance*: at 32 GiB the machine has only **6.2 GiB
+available** with the worker resident and the 8.7 GiB third-party `lemonade` server
+still holding memory. Swap never moved (8191 MiB, static). 32 GiB is safe here but is
+close to the ceiling on this box as currently populated.
+
+**Cold-start cost of large residency [MEASURED]:** filling is **0.74–0.75 domains/s
+regardless of budget**, so 58 domains take 78 s and 251 take 337 s. Residency is cheap
+to hold and slow to build — which argues for filling in the background and for
+persisting/rebuilding on a schedule rather than on demand.
+
+GPU decode costs the controller +43% TTFT (230.6 -> 329.4 ms), consistent with
+`service-batching-gate`'s finding that decode is the harsher GPU phase.
+
+## 9. Steady-state NPU engagement [MEASURED]
+
+Windowed `ne11` histogram deltas around a warm cell and a cold cell.
+
+| window | evaluated tokens | TTFT p50 | ne11 buckets | NPU-eligible (ne11 >= `kMTile` 1024) |
+|---|---:|---:|---|---:|
+| warm steady state, 24 requests | 120.0 | 199.7 ms | `b1: 61632, b64: 79488` | **0 / 141120 = 0.00%** |
+| cold, 6 fresh domains | 1677.8 | 1276.0 ms | `b1: 15408, b1024: 19872` | 19872 / 35280 = **56.33%** |
+
+**A warm state-spine controller runs entirely on the CPU.** Every offloadable node sees
+`ne11` around 120 — the delta size — which is far below the 1024-token threshold, so
+the XDNA path correctly declines on every request. The NPU engages only on cold fills
+and cache misses, where 56% of nodes qualify.
+
+This is the same tension recorded on `controller-state-scheduler`, now measured on the
+production-shaped workload: **the configuration that makes the controller fast is the
+one that leaves the NPU idle.** The offload is not broken and was not disabled — it is
+correctly declining work that is too small to be worth a dispatch.
+
+(The counter is incremented inside `worth_it()`, which the ggml gate evaluates on all
+`nth` threads, so absolute counts overcount by roughly `nth`. Bucket *ratios*, which
+are what is used here, are unaffected.)
+
+---
+
+# REAL STEADY-STATE CONTROLLER BUDGET
+
+Measured on this machine, `t4 tb16 b4096 ub4096 np8 -c 40960`, BitNet-b1.58-2B-4T I2_S.
+
+| quantity | value |
+|---|---|
+| representative stable-prefix tokens | **1600** |
+| representative changing-delta tokens | **135** (39 and 265 also measured) |
+| output tokens | **4** |
+| active warm domains | **58** at `--cache-ram 8192`; **251** at 32768 |
+| cache RAM per domain | **127.1 MiB** (= state_tokens x 75.0 KiB) |
+| warm TTFT p50 / p95, c=1, idle | **231 ms / 240 ms** |
+| warm total p50 / p95, c=1 | **294 ms / 306 ms** |
+| warm TTFT under GPU decode | **329–335 ms** |
+| cold / cache-miss TTFT p50 | **1242–1276 ms** |
+| closed-loop capacity (c=8) | **5.1 req/s** |
+| sustainable open-loop req/s | **~2.5 req/s** (p50 409 ms, p95 1292 ms); ~1.25 req/s for p95 666 ms |
+| unstable above | **~3.75–4.5 req/s** (completed < offered at 90%) |
+| NPU hit fraction, warm steady state | **0.00%** |
+| NPU hit fraction, cold miss | **56.33%** |
+| GPU interference (worker decoding) | controller +43% TTFT; **GPU decode unaffected by cache size (11.76 tok/s at both 8 and 32 GiB)** |
+| verifier interference | not re-measured this pass; `service-cotenancy` measured 1230 ops/s, p95 1.196 ms unaffected [DEFERRED] |
+
+## Verdict
+
+### VALID WITH RESIDENCY-BASED ADMISSION
+
+The multi-domain state-spine service works and is **~5x the cold envelope**
+(3.4 req/s at 231 ms vs 0.665 req/s at 1470 ms). Domain count is nearly free while the
+working set fits: 1 -> 64 domains moves TTFT p50 only 202 -> 233 ms. Residency scales
+linearly and cheaply with `--cache-ram` (58 / 122 / 251 domains at 8 / 16 / 32 GiB) at
+**zero** warm-latency cost and **zero** measured cost to the GPU worker.
+
+It is not unconditionally validated, and it is not thrash-limited either — both of the
+stronger verdicts overstate the evidence:
+
+- **Not "MULTI-DOMAIN STATE-SPINE SERVICE VALIDATED"**, because two limits bind and
+  must be respected: the working set must stay within a capacity that is *predictable*
+  (`cache_ram / (tokens x 75 KiB)`, accurate to 3–10%, conservative), and offered load
+  must stay near ~50% of closed-loop capacity — at 90% the service is unstable with a
+  100% cache hit rate, so rate admission is needed *independently* of residency.
+- **Not "PROMPT-CACHE THRASH IS THE BINDING LIMIT"**, because at 1.25x capacity with
+  realistic random access the median is *unchanged* (233.8 vs 233.5 ms) and 80% of
+  requests still hit. Thrash is a real cliff only under adversarial cyclic access, and
+  it is avoidable by construction. In the open-loop runs the cache hit rate was 100%
+  at every rate that mattered — execution, not residency, set the limit.
+
+**Admission needs two rules, not one:** bound the resident working set by the predicted
+capacity, and bound the arrival rate near half of closed-loop capacity. Neither alone
+is sufficient.
