@@ -122,8 +122,16 @@ def contamination_check(text, own_tag, all_tags):
 
 
 def cell(label, domains, turns, n_delta, conc, n_predict, threads,
-         cache=True, jsonl=None, extra=None):
-    """One measurement cell: `turns` requests spread over the domains."""
+         cache=True, jsonl=None, extra=None, turn0=1):
+    """One measurement cell: `turns` requests spread over the domains.
+
+    turn0 matters. The warm pass and the measured pass must NOT use the same
+    turn numbers: with D domains and D requests, `turn = 1 + i//D` is 1 for
+    every request, so a measured pass reusing turn 1 re-sends the exact prompt
+    the warm pass just sent and reports eval=1. That is duplicate-request
+    deduplication, not a fresh delta against a warm spine -- the precise trap
+    this workload exists to avoid. Warm with turn0=0, measure with turn0=1.
+    """
     tags = {d.tag for d in domains}
     pw = Power()
     rows = []
@@ -132,7 +140,7 @@ def cell(label, domains, turns, n_delta, conc, n_predict, threads,
 
         def one(i):
             d = domains[i % len(domains)]
-            t = 1 + i // len(domains)
+            t = turn0 + i // len(domains)
             r = run_controller(f"{label}-{i}", threads, conc, n_predict,
                                d.prompt(t, n_delta), cache=cache,
                                capture_text=True)

@@ -6,7 +6,7 @@ Subcommands map to the overnight tasks:
   matrix       Task 3  domains x delta size
   concurrency  Task 4  closed loop over DISTINCT warm domains
 """
-import argparse, json, statistics as st, subprocess, sys, time
+import argparse, json, math, statistics as st, subprocess, sys, time
 
 sys.path.insert(0, "tools")
 from multi_domain import make_domains, calibrate_delta, cell
@@ -51,11 +51,13 @@ def sysmem():
                 swap_used_mib=(m.get("SwapTotal", 0) - m.get("SwapFree", 0)))
 
 
-def warm_domains(domains, n_delta, n_predict, threads, label="warm"):
+def warm_domains(domains, n_delta, n_predict, threads, label="warm", turn0=0):
     """Put every domain's spine in cache once; NOT part of any statistic."""
     t0 = time.perf_counter()
+    # turn0=0 so the warm pass never occupies the turn numbers the measured
+    # pass will use; otherwise the measurement degenerates to duplicates.
     rec, _ = cell(label, domains, len(domains), n_delta, 1, n_predict, threads,
-                  cache=True)
+                  cache=True, turn0=turn0)
     return round(time.perf_counter() - t0, 1), rec
 
 
@@ -107,12 +109,17 @@ def cmd_matrix(a):
     rows = []
     for nd in [int(x) for x in a.domain_counts.split(",")]:
         doms = make_domains(nd)
+        turn_cursor = 1
         for tgt in [int(x) for x in a.deltas.split(",")]:
             lines, got, pre = calibrate_delta(doms[0], tgt)
             wsec, _ = warm_domains(doms, lines, a.n_predict, a.t)
-            rec, _ = cell(f"d{nd}-delta{got}", doms, max(a.per_cell, nd), lines, 1,
-                          a.n_predict, a.t,
+            # >= 2 fresh turns per domain, so every domain contributes a real
+            # delta and no cell degenerates to one request per domain.
+            n_req = max(a.per_cell, 2 * nd)
+            rec, _ = cell(f"d{nd}-delta{got}", doms, n_req, lines, 1,
+                          a.n_predict, a.t, turn0=turn_cursor,
                           jsonl=f"{a.outdir}/multi_domain_requests.jsonl")
+            turn_cursor += math.ceil(n_req / nd) + 1
             rec.update(prefix_tokens=pre, delta_tokens=got, warm_s=wsec,
                        rss_mib=ctrl_rss_mib(), cache_ram=a.cache_ram or 8192,
                        **sysmem())
@@ -135,10 +142,17 @@ def cmd_concurrency(a):
         doms = make_domains(nd)
         lines, got, pre = calibrate_delta(doms[0], a.delta_tokens)
         warm_domains(doms, lines, a.n_predict, a.t)
+        # Turn numbers must ADVANCE across cells. Restarting at turn 1 for every
+        # concurrency level makes c>=2 re-send the prompts c=1 just sent, which
+        # shows up as eval=1 -- duplicate deduplication, not warm-domain
+        # concurrency. The warm pass consumed turn 0, so start at 1 and carry.
+        turn_cursor = 1
         for c in [int(x) for x in a.conc.split(",")]:
-            rec, _ = cell(f"d{nd}-c{c}", doms, max(a.per_cell, nd), lines, c,
-                          a.n_predict, a.t,
+            n_req = max(a.per_cell, 2 * nd)
+            rec, _ = cell(f"d{nd}-c{c}", doms, n_req, lines, c,
+                          a.n_predict, a.t, turn0=turn_cursor,
                           jsonl=f"{a.outdir}/concurrency_requests.jsonl")
+            turn_cursor += math.ceil(n_req / nd) + 1
             rec.update(prefix_tokens=pre, delta_tokens=got, rss_mib=ctrl_rss_mib())
             rows.append(rec)
             print(f"  domains {nd:>3} c={c}: {rec['req_per_s']:>6.3f} rps  "

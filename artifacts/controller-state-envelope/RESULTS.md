@@ -170,3 +170,121 @@ identical across arms (72.3 / 1660.8), so this is a pure execution-speed differe
 
 **Adopted as the common baseline for everything below**, which also preserves 4 CPU
 threads of headroom for the GPU worker and verifier.
+
+## 2. The production-shaped multi-domain workload [MEASURED]
+
+`tools/multi_domain.py`. Each domain is an independent controller with:
+
+- **stable prefix, byte-identical across every turn** (so reuse is real, not
+  deduplication): objective, controller contract, policy version, action schema,
+  WorkGraph summary, authoritative state spine, and its own tag — **1600 tokens**
+- **volatile suffix, different every turn**: state version, changed cells, new event,
+  resource delta, verification delta — calibrated against the server's own tokenizer
+  to **39 / 135 / 265 tokens** (never a chars/token estimate)
+- **output: 4 tokens**, deterministic sampling
+
+Tags are **64-bit random hex** derived by SHA-256, deliberately not sequential:
+`controller-cache-batching` produced a false contamination signal because sequential
+tags were guessable and the model simply predicted a neighbour. Only unguessable tags
+distinguish "saw foreign state" from "guessed".
+
+### Two harness bugs found and fixed before publishing anything [CORRECTION]
+
+Both were the same class — a measured pass silently re-sending prompts an earlier pass
+had already warmed — and both would have inflated the results substantially.
+
+1. **Warm/measure turn collision.** With D domains and D requests, `turn = 1 + i//D`
+   is 1 for every request, so a measured pass starting at turn 1 re-sent exactly what
+   the warm pass sent. Observed as `eval = 1` at 32 domains for *all three* delta
+   sizes. Fixed with `turn0`: warm at turn 0, measure from turn 1.
+   Preserved as `multi_domain_DUPLICATE_TURNS.csv`.
+2. **Turn collision across cells.** Each concurrency level restarted at turn 1, so
+   `c>=2` re-sent what `c=1` had just sent — `eval` fell to 40.7 at 32 domains and to
+   **1** at 64. Fixed with a turn cursor that advances across cells.
+   Preserved as `concurrency_DUPLICATE_TURNS.csv`.
+
+After both fixes `eval` sits at the real delta size (~120 tokens for the 135-token
+arm) in every cell, which is the signature of a genuine warm-spine + fresh-delta
+request.
+
+## 3. Multi-domain matrix [MEASURED]
+
+`t4/tb16 b4096 ub4096 np8 c40960`, default `--cache-ram 8192`, output 4 tokens,
+>= 2 fresh turns per domain.
+
+| domains | delta tok | TTFT p50 | TTFT p95 | total p50 | eval | reused | req/s | contam | RSS MiB |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 39 | **64.6** | 78.0 | 130.8 | 25.1 | 1614.9 | 7.560 | 0 | 6752 |
+| 1 | 135 | 202.0 | 212.3 | 264.7 | 120.5 | 1614.9 | 3.790 | 0 | 6752 |
+| 1 | 265 | 349.0 | 357.2 | 414.3 | 251.2 | 1614.9 | 2.409 | 0 | 6753 |
+| 8 | 39 | 86.5 | 101.8 | 148.9 | 25.0 | 1613.5 | 6.611 | 0 | 11449 |
+| 8 | 135 | 223.5 | 231.3 | 286.2 | 119.9 | 1613.5 | 3.473 | 0 | 14703 |
+| 8 | 265 | 378.6 | 387.5 | 443.7 | 250.6 | 1613.5 | 2.257 | 0 | 14748 |
+| 32 | 39 | 96.6 | 104.4 | 157.2 | 24.5 | 1615.0 | 6.283 | 0 | 14459 |
+| 32 | 135 | 231.7 | 243.8 | 293.9 | 119.6 | 1615.0 | 3.382 | 0 | 14786 |
+| 32 | 265 | 383.6 | 392.8 | 448.4 | 226.6 | 1638.8 | 2.367 | 0 | 14690 |
+| 64 | 39 | 96.6 | 104.4 | 158.9 | 25.0 | 1614.6 | 6.232 | 0 | 14679 |
+| 64 | 135 | 232.7 | 243.4 | 294.2 | 120.1 | 1614.6 | 3.381 | 0 | 14764 |
+| **64** | **265** | **1368.1** | 1420.6 | 1434.1 | **1808.0** | **57.5** | 0.696 | 0 | 14693 |
+| **96** | 39 | **1182.6** | 1205.9 | 1246.5 | **1582.0** | **57.4** | 0.801 | 0 | 14797 |
+| **96** | 135 | **1264.7** | 1316.8 | 1327.0 | **1677.1** | **57.4** | 0.751 | 0 | 14762 |
+| **96** | 265 | **1363.1** | 1404.0 | 1430.6 | **1807.9** | **57.4** | 0.698 | 0 | 14691 |
+
+### Domain count is free until the cache runs out, then it is a cliff [MEASURED]
+
+Up to the capacity limit, **adding domains costs almost nothing**: at delta 135, TTFT
+p50 moves 202.0 -> 223.5 -> 231.7 -> 232.7 ms going 1 -> 8 -> 32 -> 64 domains. The
+whole cost is the delta size, not how many domains are resident.
+
+Past capacity, `reused` collapses from ~1615 to **57.4** and every request becomes a
+near-full prefill. 57 tokens is the preamble text common to all domains — the only
+thing still shared once each domain's own spine has been evicted.
+
+### The capacity model predicts the knee, stated before the sweep [DERIVED + MEASURED]
+
+KV per token = 5 KV heads x 128 head_dim x 30 layers x 2 (K,V) x 2 B = **75.0 KiB**.
+
+| delta | total tok | MiB/domain | predicted capacity @8 GiB | observed |
+|---|---:|---:|---:|---|
+| 39 | 1639 | 120.0 | **68.2** | 64 warm, 96 miss ✓ |
+| 135 | 1735 | 127.1 | **64.5** | 64 warm (at the edge), 96 miss ✓ |
+| 265 | 1865 | 136.6 | **60.0** | 32 warm, **64 miss** ✓ |
+
+All three brackets are consistent with the prediction, including the one that matters
+most: at delta 265 the model says 60 and 64 domains **did** miss.
+
+**Zero foreign-domain tags in any cell (`contam 0` in all 15).** State version and
+fork invariants hold (§0, `query_forks.csv`).
+
+## 4. Closed-loop concurrency over DISTINCT warm domains [MEASURED]
+
+Not identical requests. Each request targets a different warm domain with its own
+fresh delta. Delta 135, output 4 tokens.
+
+| domains | c | req/s | TTFT p50 | TTFT p95 | total p95 | eval | contam |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 8 | 1 | 3.489 | 220.8 | 261.1 | 324.3 | 120.0 | 0 |
+| 8 | 2 | 4.004 | 416.1 | 448.0 | 574.7 | 120.2 | 0 |
+| 8 | 4 | 4.525 | 793.6 | 821.5 | 976.7 | 120.3 | 0 |
+| 8 | 8 | 5.450 | 1342.9 | 1359.6 | 1488.2 | 120.2 | 0 |
+| 32 | 1 | 3.389 | 230.6 | 242.7 | 309.6 | 120.1 | 0 |
+| 32 | 2 | 3.874 | 432.1 | 500.2 | 600.5 | 120.0 | 0 |
+| 32 | 4 | 4.403 | 822.3 | 858.8 | 1006.9 | 120.2 | 0 |
+| 32 | 8 | 5.098 | 1427.0 | 1511.4 | 1642.3 | 120.5 | 0 |
+| 64 | 1 | 3.396 | 231.5 | 239.8 | 306.3 | 120.1 | 0 |
+| 64 | 2 | 4.045 | 419.8 | 449.0 | 520.6 | 119.9 | 0 |
+| 64 | 4 | 4.734 | 766.9 | 801.2 | 888.0 | 120.2 | 0 |
+| 64 | 8 | 5.075 | 1447.0 | 1514.3 | 1645.8 | 120.6 | 0 |
+
+**The warm envelope is ~5x the cold one.** A warm state-spine controller sustains
+**3.4–3.5 req/s at c=1 with 231 ms TTFT**, against 0.665 req/s and 1470 ms measured
+cold on `service-batching-gate` — 5.1x throughput at 6.4x lower latency, from state
+residency alone.
+
+**Concurrency still buys little and costs a lot**, and the shape is unchanged by
+warmth: c1 -> c8 is +50% to +56% throughput for **+508% to +525% TTFT**. c=2 is the
+knee (+15% throughput for +81% TTFT).
+
+**Domain count is irrelevant to the concurrency curve while everything is warm** —
+8, 32 and 64 domains give 3.49/3.39/3.40 req/s at c=1 and 5.45/5.10/5.08 at c=8. What
+matters is whether the working set fits, not how many domains there are.
