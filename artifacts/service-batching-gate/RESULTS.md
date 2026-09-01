@@ -269,3 +269,84 @@ ceiling permits combination, `llama-server`'s continuous batching already forms 
 batch that an explicit multi-prompt request would. **There is no scheduling work to
 recover here.** The residual +1–3% for the explicit form is one HTTP round trip and
 one result assembly, not better batching.
+
+## 7. Controller output length [MEASURED]
+
+`tools/output_thread_gate.py --mode output`, at the winning batch config
+(`b4096 ub4096 np8 t8`), deterministic sampling, 8 requests per cell.
+
+| n_predict | c | req/s | TTFT p50 | total p50 | total p95 | gen mean | W |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 1 | **0.421** | 2370 | **2370** | 2450 | — | 95.8 |
+| 4 | 1 | 0.408 | 2389 | 2443 | 2539 | 54.8 | 95.0 |
+| 8 | 1 | 0.399 | 2378 | 2514 | 2538 | 128.4 | 94.8 |
+| 32 | 1 | 0.341 | 2375 | 2934 | 2958 | 561.1 | 93.5 |
+| 1 | 2 | **0.473** | 4223 | 4223 | 4264 | — | 90.2 |
+| 32 | 2 | 0.382 | 4233 | 5121 | 5622 | 1164.1 | 92.8 |
+| 1 | 4 | **0.477** | 8398 | 8399 | 8401 | — | 90.0 |
+| 32 | 4 | 0.417 | 8498 | 9604 | 9633 | 3222.7 | 91.5 |
+
+**TTFT is invariant to output length.** At c=1 it is 2370–2389 ms across every
+`n_predict` from 1 to 32; at c=2, 4218–4268 ms. This is the expected result and it is
+worth stating because it settles what the controller budget is made of: **the entire
+first-token latency is prefill**, and nothing about the generation length touches it.
+
+Shortening the output from 32 to 1 token is nonetheless a real gain on the other two
+axes: **+23.5% throughput and −19.2% total latency at c=1** (0.341 -> 0.421 req/s,
+2934 -> 2370 ms), holding at +23.8% at c=2 and +14.4% at c=4. Generation costs
+~17.5 ms/token (561 ms for 32).
+
+**It does not change useful concurrency.** At `n_predict=1`, c1 -> c2 is +12.4%
+throughput for +78% TTFT — the same shape as at `n_predict=32` (+12.0% for +78%). So
+H5 is answered: short constrained output materially improves the *budget* but leaves
+the *concurrency regime* exactly where it was.
+
+A grammar-constrained action set was not added. `n_predict=1` already isolates the
+regime the brief asked about, and the brief explicitly warns against making benchmark
+correctness depend on model semantic quality; a grammar would constrain which token is
+emitted, not how long the request takes. [DEFERRED]
+
+## 8. Decoupling prompt threads from generation threads [MEASURED — the largest win]
+
+H4 asked whether tying `-t` and `-tb` together was leaving performance on the table.
+It was. The prior launcher never set `-tb`, so it defaulted to `-t`, and prompt
+processing — which §7 shows is the *entire* TTFT — ran at the decode width.
+
+All at `b4096 ub4096 np8`, `n_predict=32`, 8 requests per cell.
+
+| t | tb | c | req/s | TTFT p50 | prompt mean | gen mean | total p95 | W |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 8 | 8 (prior default) | 1 | 0.341 | 2368 | 2367 | 562 | 2964 | 93.4 |
+| 4 | 8 | 1 | 0.327 | 2336 | 2329 | 724 | 3089 | 92.4 |
+| 6 | 8 | 1 | 0.337 | 2363 | 2352 | 612 | 3011 | 93.0 |
+| 6 | 12 | 1 | 0.436 | 1712 | 1712 | 579 | 2306 | 108.9 |
+| 4 | 12 | 1 | 0.408 | 1775 | 1756 | 694 | 2492 | 105.4 |
+| **4** | **16** | 1 | 0.471 | **1441** | 1440 | 679 | 2154 | **104.9** |
+| 6 | 16 | 1 | 0.483 | 1465 | 1465 | 604 | 2102 | 108.9 |
+| **8** | **16** | 1 | **0.504** | 1457 | 1448 | 533 | **2009** | 110.6 |
+| 6 | 24 | 1 | 0.483 | 1488 | 1484 | 583 | 2078 | 109.4 |
+
+Against the prior `t8/tb8` default, `t8/tb16` is **−38.5% TTFT (2368 -> 1457 ms) and
++47.8% throughput (0.341 -> 0.504 req/s)** for +18.4% power.
+
+Three things this establishes:
+
+1. **`tb` is the binding parameter, `t` is nearly irrelevant.** At `tb=8`, changing `t`
+   from 4 to 8 moves TTFT by 1.4% (2336 -> 2368). At `tb=16`, changing `t` from 4 to 8
+   moves it by 1.1%. Prompt width sets the controller's latency; decode width does not.
+2. **`tb=16` is the optimum and it is exactly the physical core count.** `tb=24` reaches
+   into SMT siblings and gives nothing back (1488 vs 1465 ms, inside dispersion). That
+   is the expected shape for a bandwidth-bound prefill: a second thread on a shared
+   core adds no memory parallelism.
+3. **The brief's desired outcome exists.** `t4/tb16` delivers `t8`-like TTFT
+   (1441 vs 1457 ms, *better*) at the lowest power of the wide group (104.9 vs
+   110.6 W) and only −6.5% throughput, while holding 4 rather than 8 decode threads
+   against the co-tenants. Decode is slower (gen 679 vs 533 ms) but §7 showed
+   generation is not in the TTFT budget.
+
+At c=2 the `tb=16` variants converge (2825–2890 ms TTFT, 0.546–0.551 req/s), so the
+`t` choice is a co-tenancy decision, not a throughput one — which is what Task 10
+tests.
+
+**This is the single largest effect measured in this pass, and it is a pure
+configuration change: no kernel work, no scheduler work, one flag that was never set.**
