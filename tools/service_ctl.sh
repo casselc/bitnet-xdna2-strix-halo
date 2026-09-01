@@ -81,10 +81,15 @@ case "${1:-}" in
     if [ -n "${NE11_CSV:-}" ]; then export BITNET_XDNA_NE11_CSV="$NE11_CSV"; : > "$NE11_CSV"; fi
     if [ -n "${NE11_STATS:-}" ]; then export BITNET_XDNA_NE11_STATS=1; fi
     if [ -n "${NE11_EVERY:-}" ]; then export BITNET_XDNA_NE11_EVERY="$NE11_EVERY"; fi
+    # NO_LEASE=1 omits the lease CSV and stats entirely, so Task 4 can measure
+    # what the instrumentation itself costs. Setting the CSV path alone turns
+    # the stats on inside the runtime, so both must be dropped together.
+    if [ -z "${NO_LEASE:-}" ]; then
+        export BITNET_XDNA_LEASE_STATS=1
+        export BITNET_XDNA_LEASE_CSV="$RUN/lease.csv"
+        export BITNET_XDNA_LEASE_EVERY="${LEASE_EVERY:-32}"
+    fi
     BITNET_XDNA=1 BITNET_XDNA_STATS=1 \
-    BITNET_XDNA_LEASE_STATS=1 \
-    BITNET_XDNA_LEASE_CSV="$RUN/lease.csv" \
-    BITNET_XDNA_LEASE_EVERY="${LEASE_EVERY:-32}" \
     nohup "$CTRL_BIN" -m "$CTRL_MODEL" -t "$T" -ngl 0 \
         -c "${CTRL_CTX:-20480}" -np "${CTRL_SLOTS:-8}" \
         -b "${CTRL_B:-2048}" -ub "${CTRL_UB:-2048}" \

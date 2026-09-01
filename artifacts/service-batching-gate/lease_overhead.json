@@ -1,0 +1,10 @@
+{
+  "n_on": 36,
+  "n_off": 36,
+  "mean_on": 2379.4347222222223,
+  "mean_off": 2374.0905555555555,
+  "rel_effect": 0.002251037414794821,
+  "ci_lo": -0.004125457412099354,
+  "ci_hi": 0.008716016205795318,
+  "verdict": "LEASE INSTRUMENTATION OVERHEAD NEGLIGIBLE"
+}

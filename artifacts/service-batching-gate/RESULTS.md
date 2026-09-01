@@ -162,3 +162,35 @@ now explained rather than one being asserted over the other.
 baseline against which Task 5 asks its question: if two concurrent 1954-token
 requests ever formed one batch, offloaded work would appear in the [2048, 4096)
 bucket. It does not, at `-b 2048 -ub 2048`.
+
+## 4. Lease instrumentation overhead [MEASURED — negligible]
+
+Every service timing on this branch depends on the lease CSV writer being cheap, so
+it was measured. The env var is read once at startup, so ON and OFF cannot be
+interleaved per request; they are interleaved per **cell**, alternating which arm
+leads each round so a monotone drift (thermal, page cache, another tenant) cannot
+line up with one arm the way a block-ordered A-then-B run would.
+
+`t8 c1`, warmed, 1954-token prompt, `n_predict=1`, 3 rounds x 12 requests per arm:
+
+| round | order | OFF prefill mean | ON prefill mean |
+|---|---|---:|---:|
+| 0 | off, on | 2341.5 ms | 2377.6 ms |
+| 1 | on, off | 2406.0 ms | 2378.4 ms |
+| 2 | off, on | 2374.8 ms | 2382.3 ms |
+
+Pooled, n=36 per arm:
+
+```
+OFF  mean 2374.09 ms   p50 2381.61
+ON   mean 2379.43 ms   p50 2384.05
+relative effect  +0.23%   (bootstrap 95% CI  -0.41% .. +0.87%)
+```
+
+**LEASE INSTRUMENTATION OVERHEAD NEGLIGIBLE.** The confidence interval contains
+zero and both bounds are inside ±1%, so the instrumentation stays on for every
+experiment on this branch. Note the round-1 ordering: OFF was *slower* than ON in
+that round, which is what run-to-run dispersion at this scale looks like and is the
+reason a single A/B pair would not have supported the claim.
+
+Raw: `lease_overhead.csv`, `lease_overhead.json`.
