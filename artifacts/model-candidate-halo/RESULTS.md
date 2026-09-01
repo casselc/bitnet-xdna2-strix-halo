@@ -66,10 +66,10 @@ on the same pinned llama.cpp (`9918 / 390c30775`), 4 threads, `-tb 16`,
 |---|---:|---:|---:|---:|---:|---:|---:|---|
 | **LFM2.5-1.2B** | 1301 ms | 114.8 ms † | **164.4 ms** | 85.6 t/s | **20.23 MiB** | **404** | **1619** | ⚠ corrupted by foreign domain |
 | **Qwen3.5-0.8B** | 1917 ms | 144.0 ms † | **188.2 ms** | **99.9 t/s** | 39.94 MiB | 205 | 820 | ⚠ corrupted by foreign domain |
-| BitNet-b1.58-2B | 1413 ms | **197.4 ms** | 263.2 ms | 67.5 t/s | 127.18 MiB | 64 | 257 | ✅ **bit-exact** |
+| BitNet-b1.58-2B | 1675 ms | **199.1 ms** | 263.2 ms | 60.5 t/s | 127.18 MiB | 64 | 257 | ✅ **bit-exact** |
 | Qwen3.5-2B | 3083 ms | 261.7 ms † | 350.0 ms | 48.6 t/s | 39.94 MiB | 205 | 820 | ✗ never exact |
 | LFM2.5-2.6B | 2858 ms | 245.7 ms † | 352.5 ms | 39.5 t/s | 27.71 MiB | 295 | 1182 | ✗ never exact |
-| Nemotron-3-Nano-4B | — | — | — | **0.8 t/s** | 108.0 MiB ‡ | 75 | 303 | not reached |
+| Nemotron-3-Nano-4B | — | — | — | **0.8 t/s** | 108.0 MiB ‡ | 75 | 303 | ✗ not exact (0.134) |
 
 † via **explicit spine checkpoint/restore**. Ordinary `cache_prompt` prefix reuse
 does not work for any hybrid — the runtime forces a full re-prefill — which
@@ -81,6 +81,12 @@ tokens used, so it does not shrink with a shorter spine.
 **Decision latency includes the restore** (3.2-4.9 ms) for the hybrids. The
 incumbent is quoted on its native server-side reuse, which is its best path;
 forced down the explicit route it regresses to 290.5 ms.
+
+Every row above comes from a single run of one harness per model, so the columns
+are internally consistent. The incumbent's separately-measured regression check
+(`bitnet_ref.json`, run under `service_ctl.sh` with `--cache-ram 8192`) gives
+197.4 ms warm TTFT and 67.5 tok/s decode — the small differences from the row
+above are configuration, not drift.
 
 ## Training scorecard
 
@@ -200,7 +206,8 @@ the 1.2B pair alone.
 7. **Does Nemotron's Mamba-heavy structure give cheap state or decode?**
    Neither, here. 108 MiB serialized (sized by slot context, not tokens) and
    0.8 tok/s CPU decode. Its 4-attention-layer geometry *should* be cheap;
-   this runtime does not deliver it.
+   this runtime does not deliver it. Its state restore is also not bit-exact on
+   a clean slot (|Δlogprob| 0.134).
 8. **Realistic LoRA throughput?** 718-1704 tok/s across seq 512-2048 for
    0.8-1.2B models at ~4096 tokens/update — not the 2819 tok/s the 20-example
    smoke batch suggested.

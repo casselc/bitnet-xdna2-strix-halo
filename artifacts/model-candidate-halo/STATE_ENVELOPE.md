@@ -145,6 +145,12 @@ slot held beforehand.
 | LFM2.5-1.2B | 6 attn + 10 conv | 0.00000 | **0.18302** | no |
 | Qwen3.5-2B | 6 attn + 18 DeltaNet | **0.20806** | **0.41244** | no |
 | LFM2.5-2.6B | 8 attn + 22 conv | **0.30381** | **0.46035** | no |
+| Nemotron-3-Nano-4B | 4 attn + 21 mamba2 | **0.13394** | inconclusive † | no |
+
+† Nemotron's two polluted arms returned `cache_n = 0` — they fell back to a full
+reprocess and never exercised the restore, so their apparent 0.00000 is the
+"passes for the wrong reason" case this probe exists to catch and is reported as
+inconclusive rather than clean. Its clean-slate 0.13394 is a real measurement.
 
 **The BitNet row is the control that makes the rest interpretable.** It is
 bit-exact on all four arms with `cache_n` pinned at 1600, which rules out
