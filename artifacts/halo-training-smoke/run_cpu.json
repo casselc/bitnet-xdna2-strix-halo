@@ -1,0 +1,48 @@
+[
+  {
+    "phase": "train",
+    "model": "Qwen/Qwen3-0.6B",
+    "dtype": "bfloat16",
+    "device": "cpu",
+    "torch": "2.10.0+rocm7.0",
+    "hip": "7.0.51831",
+    "gpu": null,
+    "load_s": 221.0,
+    "trainable_params": 4587520,
+    "total_params": 600637440,
+    "trainable_pct": 0.7638,
+    "steps": 60,
+    "loss_first": 5.2768,
+    "loss_last": 0.0053,
+    "loss_drop_pct": 99.9,
+    "step_ms_median": 945.4,
+    "tokens_per_s": 573.3,
+    "tokens_per_batch": 542,
+    "train_s": 57.3,
+    "peak_mem_mib": null,
+    "ckpt_bytes": 18386290,
+    "ckpt_write_s": 0.47,
+    "watts": 111.6
+  },
+  {
+    "phase": "verify",
+    "model": "Qwen/Qwen3-0.6B",
+    "dtype": "bfloat16",
+    "device": "cpu",
+    "torch": "2.10.0+rocm7.0",
+    "hip": "7.0.51831",
+    "gpu": null,
+    "load_s": 0.5,
+    "reload_s": 0.21,
+    "loss_after_reload": 0.0035,
+    "resumed_losses": [
+      0.0035,
+      2.7778,
+      2.4448,
+      1.6545,
+      0.9867
+    ],
+    "trainable_after_reload": 4587520,
+    "peak_mem_mib": null
+  }
+]
