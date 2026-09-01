@@ -28,6 +28,10 @@ This index is current as of the `controller-state-envelope` pass (2026-09-01).
 | **`controller-state-envelope`** | current | **the real multi-domain warm-state envelope**, cache-RAM scaling, thrash, warm open loop, candidate-shape probe | `artifacts/controller-state-envelope/RESULTS.md` |
 | **`halo-training-smoke`** | `682aed4` | **local ROCm/PyTorch LoRA training on gfx1151**, and its coexistence cost | `artifacts/halo-training-smoke/RESULTS.md` |
 
+`controller-state-envelope` shows `current` rather than a SHA because this index
+lives in that branch and cannot name its own commit. Run `git rev-parse
+origin/controller-state-envelope` for its tip.
+
 `main` (`885df0c`) carries none of this work; nothing has been merged into it.
 
 ## Corrections chain — read these together
