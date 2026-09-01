@@ -1,0 +1,4 @@
+cache_ram_mib,state_tokens,mib_per_domain,predicted_capacity,probed,warm_run,knee_found,capacity,capacity_gt,warm_ttft_p50,cold_ttft_p50,rss_mib,wall_s,mem_avail_mib,swap_used_mib
+8192,1735,127.1,64.5,80,58,1,58,,233.1,1241.73,14761.7,139.4,48529,8191
+16384,1735,127.1,128.9,161,122,1,122,,232.42,1270.58,22909.8,278.8,40442,8191
+32768,1735,127.1,257.9,320,251,1,251,,231.64,1248.75,39329.5,556.2,23963,8191

@@ -288,3 +288,106 @@ knee (+15% throughput for +81% TTFT).
 **Domain count is irrelevant to the concurrency curve while everything is warm** —
 8, 32 and 64 domains give 3.49/3.39/3.40 req/s at c=1 and 5.45/5.10/5.08 at c=8. What
 matters is whether the working set fits, not how many domains there are.
+
+## 5. Warm open-loop characterization [MEASURED]
+
+`tools/warm_open_loop.py`. 32 warm domains (well inside the 58-domain capacity at
+8 GiB), 1600-token prefix, 135-token delta, 4-token output. Arrivals are scheduled
+*before* the run using the construction corrected on `service-batching-gate` —
+conditioned on N arrivals in [0, T] a Poisson process places them as N uniform order
+statistics, so fixing `N = round(rate x T)` makes the offered rate exact instead of
+seed-dependent. Latency is charged from the **scheduled** arrival.
+
+Closed-loop reference capacity: 5.0 req/s (32 domains, c=8, §4).
+
+| offered | frac | completed | n | cache hit | TTFT p50 | TTFT p95 | total p95 | in-flight max | err |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1.250 | 25% | 1.255 | 300 | 100% | **285.1** | 666.0 | 1186.9 | 9 | 0 |
+| 2.500 | 50% | 2.505 | 600 | 100% | **409.2** | 1291.7 | 2583.8 | 15 | 0 |
+| 3.750 | 75% | 3.744 | 900 | 100% | 1482.4 | 4081.6 | 5333.4 | 28 | 0 |
+| 4.500 | 90% | **3.974** | 1080 | 100% | **17026.6** | 31198.0 | 32443.2 | **137** | 0 |
+
+**Cache hit rate is 100% at every rate** — residency is not the limit here, execution
+is. Zero errors and zero cross-domain contamination across 2880 requests.
+
+**Instability sits between 75% and 90% of closed-loop capacity.** At 90% completed
+(3.974/s) falls below offered (4.500/s), in-flight climbs to 137, and TTFT p50 reaches
+17.0 s — a 74x inflation over the unloaded 231 ms. The closed-loop figure of 5.0 req/s
+is a throughput ceiling, not a service level.
+
+**Service budget:** ~1.25 req/s holds p50 at 285 ms and p95 at 666 ms; ~2.5 req/s holds
+p50 at 409 ms and p95 at 1.3 s. Beyond ~3.75 req/s the median has already degraded 6.4x
+even though throughput still looks healthy — throughput is a lagging indicator here.
+
+## 6. Cache-RAM scaling [MEASURED]
+
+`tools/cache_ram_scale.py`. Capacity predicted **before** each run from the KV
+geometry (75.0 KiB/token x 1735 tokens = 127.1 MiB/domain), then probed
+newest-to-oldest around the prediction, stopping at the first run of misses. My GPU
+worker was stopped for this sweep to free unified memory; the third-party `lemonade`
+server (8.7 GiB) could not be and remains a standing tax.
+
+| `--cache-ram` | predicted | **observed** | ratio | warm TTFT p50 | cold TTFT p50 | ctrl RSS | mem avail | swap |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 8192 MiB | 64.5 | **58** | 0.90 | 233.1 ms | 1241.7 ms | 14762 MiB | 48529 MiB | 8191 (static) |
+| 16384 MiB | 128.9 | **122** | 0.95 | 232.4 ms | 1270.6 ms | 22910 MiB | 40442 MiB | 8191 (static) |
+| 32768 MiB | 257.9 | **251** | 0.97 | 231.6 ms | 1248.8 ms | 39330 MiB | 23963 MiB | 8191 (static) |
+
+**The knob works, and it is linear.** Quadrupling the budget quadruples capacity
+(58 -> 251, 4.33x for 4x the RAM). RSS tracks the budget almost exactly
+(+8148 MiB for +8192 MiB, then +16420 for +16384).
+
+**Warm TTFT is completely flat across a 4x cache: 233.1 / 232.4 / 231.6 ms.** A larger
+prompt cache costs nothing at lookup time — the LRU list is walked with
+`get_common_prefix` per entry, but at these sizes that is invisible against a 231 ms
+request. So capacity is purchasable with RAM at no latency penalty.
+
+**The prediction is conservative and gets better with size** (0.90 -> 0.95 -> 0.97).
+The shortfall is fixed overhead — slot KV, the model, allocator slack — amortized over
+more domains as the budget grows.
+
+Swap did not move (8191 MiB throughout, and it was already static at session start),
+so none of these numbers are swap-contaminated.
+
+## 8. Thrash characterization [MEASURED — random degrades, cyclic collapses]
+
+`tools/cache_thrash.py`. `--cache-ram 8192`, measured capacity 58 domains, 120
+requests per pattern.
+
+| regime | working set | pattern | hit rate | TTFT p50 | TTFT p95 | req/s |
+|---|---:|---|---:|---:|---:|---:|
+| below capacity (0.75x) | 44 | random | **100.0%** | 233.5 | 237.4 | 3.398 |
+| below capacity (0.75x) | 44 | cyclic | **100.0%** | 234.5 | 242.3 | 3.376 |
+| above capacity (1.25x) | 72 | random | **80.0%** | **233.8** | 1272.7 | 1.989 |
+| above capacity (1.25x) | 72 | cyclic | **29.2%** | **1246.9** | 1297.4 | 0.977 |
+
+This **refines** the previous branch's finding rather than repeating it.
+`controller-state-scheduler` reported that exceeding capacity collapses the hit rate to
+zero — but that was measured with a cyclic scan, which is the pattern LRU is worst at
+by construction.
+
+**Under realistic random access, a 24%-oversized working set still gets 80% hits and
+its median latency is unchanged (233.8 vs 233.5 ms).** Only the tail suffers
+(p95 237 -> 1273 ms) and throughput halves. Under adversarial cyclic access at the same
+working set the hit rate falls to 29.2% and the **median** goes to 1246.9 ms — 5.3x
+worse than random at identical pressure.
+
+**Below capacity, access pattern does not matter at all** (100% both, 3.40 vs 3.38
+req/s).
+
+### The rule an admission controller would need [DERIVED]
+
+Not implemented tonight — this is the input for that work:
+
+1. **Keep the resident working set at or below measured capacity.** Capacity is
+   `cache_ram_MiB / (state_tokens x 75.0 KiB / 1024)`, which predicted all three
+   budgets to within 3–10%, conservatively.
+2. **Below capacity, admit freely** — pattern and domain count are irrelevant
+   (§3, §4, and both rows above).
+3. **Above capacity, the access pattern decides the severity.** Randomised or
+   LRU-friendly ordering keeps the median intact and costs throughput; round-robin
+   over the whole set destroys the median. So a scheduler that must exceed capacity
+   should avoid sweeping domains in a fixed cycle.
+4. **Rate, not just residency, needs a cap**: even at 100% hit rate, offered load above
+   ~75% of closed-loop capacity degrades the median 6.4x and above ~90% is unstable
+   (§5).

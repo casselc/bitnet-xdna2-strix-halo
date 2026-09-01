@@ -1,0 +1,5 @@
+requests,usable,excluded,hit_rate,ttft_p50,ttft_p95,req_per_s,wall_s,cache_ram_mib,capacity,working_set,frac_of_capacity,regime,pattern,delta_tokens
+120,120,0,1.0,233.49,237.41,3.398,35.3,8192,58,44,0.75,below capacity,random,135
+120,120,0,1.0,234.54,242.27,3.376,35.5,8192,58,44,0.75,below capacity,cyclic,135
+120,120,0,0.8,233.84,1272.73,1.989,60.3,8192,58,72,1.25,above capacity,random,135
+120,120,0,0.292,1246.9,1297.4,0.977,122.9,8192,58,72,1.25,above capacity,cyclic,135
