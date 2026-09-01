@@ -22,12 +22,15 @@ from service_bench import (run_controller, controller_prompt, write_rows, pct,
 
 def run_arm(prompt, rate, duration, threads, n_predict, timeout_s):
     """Fire requests on a pre-computed Poisson schedule."""
+    # Conditioned on N arrivals in [0, T], a Poisson process places them as N
+    # i.i.d. Uniform(0, T) order statistics. Drawing exponential gaps instead
+    # lets N vary with the seed: at rate 0.3325 over 150 s the mean is 49.5 with
+    # sd 8.1, and seed 4242 drew 66 -- so an arm labelled "50% of capacity"
+    # actually offered 66%. Fixing N to round(rate*T) keeps the clustering and
+    # makes the offered rate exactly what the label claims.
     rng = random.Random(4242)
-    sched, t = [], 0.0
-    while t < duration:
-        t += rng.expovariate(rate)
-        if t < duration:
-            sched.append(t)
+    n_arrivals = max(1, int(round(rate * duration)))
+    sched = sorted(rng.uniform(0.0, duration) for _ in range(n_arrivals))
 
     rows, lock = [], threading.Lock()
     inflight = {"n": 0, "max": 0}

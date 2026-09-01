@@ -476,3 +476,199 @@ identified. It is also the expected result given §8: at `tb16` every width uses
 same 16 prompt threads, and `t` only sets decode width, which §7 showed is not in the
 TTFT budget. A phase-aware policy would be switching the parameter that does not
 matter.
+
+## 11. Interleaved replication of the two finalists [MEASURED — not separable]
+
+The prior width comparisons were block-ordered with per-class n as small as 5, which
+cannot separate a configuration effect from machine drift and cannot support a p95.
+Here `t8/tb16` and `t4/tb16` alternate round by round, both explicitly warmed after
+each restart, identical workload, 24 requests per class.
+
+| config | n | TTFT p50 | p95 | mean | sd | IQR | min | max |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| A `t8/tb16` | 24 | 1434.3 | 1516.2 | 1445.7 | 31.2 | 30.3 | 1412 | 1535 |
+| B `t4/tb16` | 24 | 1442.2 | **1484.0** | 1445.7 | **18.9** | **14.9** | 1425 | **1505** |
+
+Median difference **+0.56%, bootstrap 95% CI −0.38% .. +1.16%** — contains zero, and
+the means are identical to 0.1 ms. **The two configurations are not separable on
+central tendency at this sample size.**
+
+They do differ in *dispersion*: `t4/tb16` has 40% lower standard deviation, half the
+IQR, and a lower p95 and max — while holding 4 rather than 8 decode threads against
+the co-tenants. That is the tie-breaker.
+
+p99 is deliberately not reported. At n=24 the 99th percentile is the maximum, and
+quoting it would be quoting one sample.
+
+## 12. Open-loop arrival characterization [MEASURED]
+
+`tools/open_loop.py` on the winning config (`t4/tb16 b4096 ub4096 np8`,
+`n_predict=8`), 240 s per arm, arrivals scheduled before the run. Latency is charged
+from the **scheduled** arrival, so a late start is attributed to the service rather
+than dropped from the distribution — the closed-loop harness cannot see this at all,
+because with a fixed number of in-flight requests a slower service simply receives
+fewer arrivals.
+
+Measured capacity from a closed-loop saturation probe: c1 0.596, c2 0.669, c4 0.664,
+c8 0.665 req/s -> **capacity ~= 0.665 req/s**.
+
+| offered | frac of capacity | completed | n | TTFT p50 | TTFT p95 | total p95 | total max |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.333 | 50% | 0.336 | 80 | **1900** | 4608 | 11514 | 12777 |
+| 0.499 | 75% | 0.501 | 120 | 3146 | 7714 | 15630 | 16862 |
+| 0.599 | 90% | 0.599 | 144 | 5902 | 10676 | 19571 | 23446 |
+| 0.665 | 100% | **0.648** | 160 | 10728 | 21030 | 29941 | 32754 |
+| 0.732 | 110% | 0.665 | 176 | 23324 | 28526 | 37844 | 39864 |
+
+Against the unloaded warmed TTFT of 1470 ms, the p50 inflation is
+**1.29x / 2.14x / 4.02x / 7.30x / 15.87x**.
+
+- **Throughput ceiling confirmed independently.** At 110% offered, completed settles at
+  0.665 req/s — exactly the closed-loop capacity, reached by a completely different
+  method.
+- **Instability begins between 90% and 100%.** At 90% completed still equals offered
+  (0.599); at 100% completed *falls below* offered (0.648 < 0.665) and the backlog
+  grows for the rest of the arm.
+- **Latency diverges far earlier than throughput does.** Throughput looks healthy up to
+  90%, but TTFT p50 is already 4x its unloaded value there. Anything that reads only
+  req/s would call 90% load fine.
+
+### Two measurement defects found and fixed here [CORRECTION]
+
+1. **Seed-dependent offered rate.** The first version drew exponential inter-arrival
+   gaps, so the number of arrivals varied with the seed: at 0.3325/s over 150 s the
+   mean is 49.5 with sd 8.1, and seed 4242 drew 66 — the arm labelled "50% of
+   capacity" actually offered 66%. Every arm was mislabelled by its own draw. Fixed by
+   using the statistically correct construction: conditioned on N arrivals in [0, T], a
+   Poisson process places them as N i.i.d. Uniform(0, T) order statistics, so fixing
+   N = round(rate x T) keeps the clustering and makes the offered rate exact. Preserved
+   as `open_loop_MISLABELLED_RATES.csv`.
+2. **Overlapping runs.** The corrected sweep's 50% arm was started while the previous
+   sweep's overloaded 110% arm was still draining an ~88 s backlog, and reported a
+   54 s TTFT p50 — worse than its own 75% arm, which is impossible. Re-run in
+   isolation: 1900 ms. `open_loop.csv` retains the contaminated row; `open_loop_final.csv`
+   carries the isolated re-run.
+
+---
+
+# 13. Final answers
+
+**1. Was concurrency ~1 caused materially by `-b/-ub 2048`?** **Partly — as a real
+mechanism, but not as the cause of the regime.** [MEASURED] At `-ub 2048` two
+concurrent 1954-token requests never share a graph; at `-ub 4096` they do (ne11 moves
+from bucket [1024,2048) to [2048,4096), and lease acquisitions halve, 1184 -> 576).
+Lifting the ceiling is worth +9.7% throughput, −10% TTFT and −5 W at c=2. But at
+`b4096`, c1 -> c2 is still +14.9% throughput for +80% TTFT, and c4 buys nothing.
+`np` alone changes nothing.
+
+**2. Does explicit multi-prompt batching outperform independent requests?** **No.**
+[MEASURED] At `ub 2048` neither combines; at `ub 4096` both combine and reach
+identical throughput (0.394 vs 0.394). The ubatch ceiling binds regardless of how work
+is submitted, so this is not a scheduling mistake and there is no serving work to
+recover.
+
+**3. What graph token-batch sizes actually reach XDNA?** [MEASURED] One prefill graph
+is exactly **210** I2_S nodes; **3** decline for size, **60 decline for shape**, **147
+offload**. The 60 are `attn_k`/`attn_v` at `[2560, 640]` — `plan_for` requires
+`N ∈ {2560, 6912}`, so 2 of 7 matmuls per layer have no NPU plan. Offloaded ne11 is
+[1024, 2048) at `ub 2048` and [2048, 4096) at `ub 4096` with c>=2.
+
+**4. What is REAL warmed client TTFT?** [MEASURED] **1441–1470 ms** at the recommended
+configuration, c=1, 1954-token prompt (streaming first-token arrival, not
+reconstructed). The prior published figure was 2368 ms at `t8/tb8 b2048`.
+
+**5. What controller output length should define the service budget?** [MEASURED]
+**`n_predict` between 1 and 8.** TTFT is invariant to output length, so the budget is
+prefill; but total latency and throughput are not — 32 -> 1 tokens is −19.2% total
+latency and +23.5% throughput. Use 8 if the action needs a few tokens, 1 if it does not.
+
+**6. Is separate `-tb` useful?** [MEASURED] **Yes — the largest single effect in this
+pass.** `tb16` vs the tied `tb=t=8` default is −38.5% TTFT and +47.8% throughput.
+`tb=16` equals the physical core count and is the optimum; `tb=24` returns nothing.
+`t` is nearly irrelevant to TTFT (~1% across 4–8).
+
+**7. How much does realistic prefix reuse buy?** [MEASURED] **5.5x at 90% reuse**
+(TTFT 1461.6 -> 265.1 ms) with distinct volatile suffixes, plus −13.5 W. More than
+every batching and threading change in this pass combined.
+
+**8. Does XDNA drop out naturally on cached short suffixes?** [MEASURED] **Yes,
+exactly at the threshold.** Offloaded nodes go 1470 -> 0 the moment the uncached
+suffix falls under `kMTile = 1024` (~47% reuse for a 1954-token prompt). Cold/large
+misses take the CPU+NPU hybrid at ~1460 ms; warm/small deltas take CPU-only at
+~265 ms. It was not forced, and should not be.
+
+**9. Does a GPU-prefill phase favour narrower controller CPU use?** [MEASURED] **No.**
+The phases differ a lot — GPU decode costs the controller +64–68% TTFT versus idle,
+GPU prefill only +23–33%, the opposite of the obvious guess — but within any phase the
+t4/t6/t8 spread is at most 4.5% with no consistent sign. **PHASE-AWARE THREAD POLICY
+NOT JUSTIFIED**, now tested against the workload the prior pass was missing.
+
+**10. Final recommended static controller configuration?** [MEASURED]
+
+```
+-t 4   -tb 16   -b 4096   -ub 4096   -np 8   -c 20480
+n_predict 1..8, cache_prompt on, explicit warmup after every restart
+```
+
+`t4` over `t8` because §11 could not separate them on median (+0.56%, CI spans zero)
+while `t4/tb16` has 40% lower dispersion, a lower p95 and max, and holds half the
+decode threads against the GPU worker and CPU verifier.
+
+**11. Sustainable open-loop request rate?** [MEASURED] Capacity is **0.665 req/s**, but
+that is the throughput ceiling, not a service level. **Sustainable at ~0.33 req/s
+(50% of capacity)**, where TTFT p50 is 1900 ms (1.29x unloaded) and p95 4608 ms.
+Instability begins between 90% and 100%, where completed first falls below offered.
+
+**12. Queue/admission threshold?** [DERIVED from 11] Target utilization **50%**
+(~0.33 req/s); warn at 75% (2.14x p50); shed above 90%. Admission should bound
+**in-flight requests at 2** — c=2 is where throughput peaks (0.669) and c=4 adds
+nothing (0.664) while multiplying the tail. Reject or defer rather than queue beyond
+that: at 110% offered, throughput holds at exactly capacity while TTFT p50 reaches
+23.3 s, so a deep queue converts excess load into latency and nothing else. **Not
+implemented — this branch was scoped to measurement.** [DEFERRED]
+
+---
+
+# Verdict
+
+## SERVICE CONCURRENCY IMPROVED — NEW REFERENCE POINT
+
+Not because concurrency itself improved — it did not, and useful in-flight depth is
+still about 2 — but because the **service budget moved materially and the prior
+reference is superseded**. Warmed controller TTFT at c=1 goes **2368 ms -> 1441 ms
+(−39%)** from configuration alone, and to **265 ms** with realistic prefix reuse. None
+of that required kernel, scheduler or model work.
+
+The prior branch's operational conclusion survives intact: throughput saturates almost
+immediately, extra in-flight requests mostly buy latency, and admission control is
+needed. What changes is the number that control should be set against.
+
+### Recommended configuration
+
+| parameter | value | why |
+|---|---|---|
+| `-t` | **4** | not separable from 8 on median; 40% lower dispersion, frees 4 cores for co-tenants |
+| `-tb` | **16** | = physical cores; −38.5% TTFT vs tied `tb=t`; 24 returns nothing |
+| `-b` | **4096** | permits two 1954-token prompts in one graph |
+| `-ub` | **4096** | the actual gate on batch formation |
+| `-np` | **8** | no measured effect on batching; keeps slots available |
+| output | **1–8 tokens** | TTFT-neutral, −19% total latency vs 32 |
+
+### Headline numbers
+
+| quantity | value |
+|---|---|
+| cache-miss TTFT (cold context, hybrid CPU+NPU) | **~1460 ms** |
+| cache-hit TTFT (90% prefix reuse, CPU-only) | **~265 ms** |
+| cold-start penalty, first request after restart | **+584 to +698 ms** |
+| capacity | **0.665 req/s** |
+| max sustainable offered load before p95/p99 diverge | **~0.33 req/s (50%)** |
+| in-flight bound for admission | **2** |
+
+### What this pass did not do [DEFERRED]
+
+No NPU kernel work, no attention, no GEMM retuning, no ROCm, no BitDistill, no
+production scheduler or queue, no merge to main. The `attn_k`/`attn_v` shape gap
+(§3 — 60 of 210 nodes decline for shape) is now precisely quantified but deliberately
+left open; it is kernel work, and §9 shows the highest-value direction for the
+controller keeps the NPU idle rather than feeding it more shapes.

@@ -1,0 +1,2 @@
+frac_of_capacity,offered_rps,scheduled,completed,errors,wall_s,completed_rps,ttft_p50,ttft_p95,ttft_p99,total_p50,total_p95,total_p99,total_max,watts
+0.5,0.333,80,80,0,238.3,0.336,1899.56,4607.56,,3245.44,11514.28,,12777.4,66.7
