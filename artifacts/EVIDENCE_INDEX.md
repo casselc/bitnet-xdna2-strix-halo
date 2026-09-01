@@ -26,11 +26,13 @@ This index is current as of the `controller-state-envelope` pass (2026-09-01).
 | `controller-state-scheduler` | `6d225c9` | state spine, forks, memoization, prompt-cache residency | `artifacts/controller-state-scheduler/RESULTS.md` |
 | `service-batching-gate` | `856357c` | `-ub` gated batch formation; `-tb` was never set and cost 38% TTFT | `artifacts/service-batching-gate/RESULTS.md` |
 | **`controller-state-envelope`** | current | **the real multi-domain warm-state envelope**, cache-RAM scaling, thrash, warm open loop, candidate-shape probe | `artifacts/controller-state-envelope/RESULTS.md` |
-| **`halo-training-smoke`** | `682aed4` | **local ROCm/PyTorch LoRA training on gfx1151**, and its coexistence cost | `artifacts/halo-training-smoke/RESULTS.md` |
+| **`halo-training-smoke`** | `f4c2732` | **local ROCm/PyTorch LoRA training on gfx1151**, and its coexistence cost | `artifacts/halo-training-smoke/RESULTS.md` |
+| **`model-candidate-halo`** | current | **controller-model hardware bakeoff**: warm state size by serialization, hybrid state-restore correctness, realistic LoRA scaling, real checkpoint resume, coexistence cost | `artifacts/model-candidate-halo/RESULTS.md` |
 
-`controller-state-envelope` shows `current` rather than a SHA because this index
-lives in that branch and cannot name its own commit. Run `git rev-parse
-origin/controller-state-envelope` for its tip.
+`model-candidate-halo` shows `current` rather than a SHA because this copy of the
+index lives in that branch and cannot name its own commit. Run `git rev-parse
+origin/model-candidate-halo` for its tip. (`controller-state-envelope`, which
+this branch was cut from, is `60230b5`.)
 
 `main` (`885df0c`) carries none of this work; nothing has been merged into it.
 
@@ -47,6 +49,9 @@ rewritten in place. The chain:
 | "rebase cadence 10 vs 25 indistinguishable" | `controller-state-scheduler` §6 | `controller-state-envelope` §0 — same conclusion, valid data |
 | "exceeding cache capacity collapses the hit rate to 0%" | `controller-state-scheduler` §10 | `controller-state-envelope` §8 (true only for cyclic access; random keeps its median) |
 | "HALO TRAINING STACK BLOCKED" | `halo-training-smoke` (first half) | same file, CORRECTION section — system ROCm 7.1 resolved it |
+| GPU training costs the controller "+0.7% TTFT" | `halo-training-smoke` | `model-candidate-halo` — **+48%** at a realistic sustained load; the original figure holds only for the ~20-example smoke batch it was measured on |
+| "2819 tok/s at Qwen3-0.6B" as training throughput | `halo-training-smoke` (self-qualified) | `model-candidate-halo` — 718–1090 tok/s at seq 256–2048 with a fixed token budget |
+| `artifacts/invocations.md` NPU examples (`artifacts/xclbin`, `-p 512`) | pre-`runtime-v1` | `model-candidate-halo` `REGRESSION.md` — needs `artifacts/xclbin-tuned` and `-ub 2048` under the promoted runtime |
 
 ## Current headline numbers
 
@@ -58,6 +63,10 @@ rewritten in place. The chain:
 | NPU engagement, warm steady state | **0.00%** (cold miss: 56.33%) | §9 |
 | does a bigger cache hurt the GPU? | **no** — 11.76 tok/s at both 8 and 32 GiB | §7 |
 | does model geometry help the NPU? | **no** — 1.7B ≈ 2B; smaller is worse; N ≤ 4096 is a hard limit | Appendix |
+| cheapest warm state per domain | **20.2 MiB** (LFM2.5-1.2B) vs 127.2 MiB (BitNet) — 6.3x more domains | `model-candidate-halo` |
+| do hybrid models restore state correctly? | **no** — only the pure-attention incumbent is bit-exact | `model-candidate-halo` |
+| realistic local LoRA throughput | **718–1704 tok/s** at seq 256–2048, ~4096 tok/update | `model-candidate-halo` |
+| does GPU training disturb the controller? | **yes, +48% TTFT** under sustained load | `model-candidate-halo` |
 | local training on this box | **ready** — 2819 tok/s @ 0.6B, 1480 @ 1.7B | `halo-training-smoke` |
 | training's cost to the controller | **GPU +0.7% / CPU +74%** TTFT | `halo-training-smoke` T5 |
 
