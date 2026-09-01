@@ -123,6 +123,13 @@ this test exists to detect. 228 optimizer state entries restored.
 The optimizer state being twice the adapter is the whole point: an adapter-only
 save discards two-thirds of what a resume needs.
 
+**LFM2.5-1.2B reproduces the result**, so this is a property of the harness and
+not of one architecture: max |continuous − resumed| = **0.00e+00** over 8 steps
+(3.96054 → 3.26641, identical in both runs). Its checkpoint is 127.31 MiB
+(adapter 42.40 + optimizer/scheduler 84.91), write 0.801 s, read 0.153 s —
+larger than Qwen3.5-0.8B's because it carries 11.1 M trainable parameters
+against 7.3 M, at the same 2:1 optimizer-to-adapter ratio.
+
 ## Not measured, and why
 
 - **Qwen3.5-2B, LFM2.5-2.6B, Nemotron-3-Nano-4B**: their BF16 checkpoints did

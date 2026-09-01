@@ -89,7 +89,7 @@ coverage (~0.94-0.96% trainable in both).
 
 | model | tok/s @512 | @1024 | @2048 | peak GPU @1024 | @2048 | trainable | resume |
 |---|---:|---:|---:|---:|---:|---:|---|
-| **LFM2.5-1.2B** | **1703.8** | **1637.1** | **1347.7** | **7.0 GiB** | **13.9 GiB** | 11.1 M | not run |
+| **LFM2.5-1.2B** | **1703.8** | **1637.1** | **1347.7** | **7.0 GiB** | **13.9 GiB** | 11.1 M | ✅ **bit-exact** |
 | Qwen3.5-0.8B | 1090.2 | 1014.3 | 717.7 | 11.7 GiB | 22.2 GiB | 7.3 M | ✅ **bit-exact** |
 
 LFM2.5-1.2B trains 1.56-1.88x faster than Qwen3.5-0.8B while being a 1.6x larger
@@ -97,9 +97,11 @@ model, and needs 1.6x less memory — 6 of 16 blocks carry attention, the rest a
 linear-cost short-conv. Throughput peaks at **seq 512** for both. Power is flat
 at 95-112 W; nothing is power-limited.
 
-Checkpoint resume (Qwen3.5-0.8B): the resumed run reproduces the continuous run
-to **0.00e+00** across all 8 steps after a process kill. Checkpoint 83.48 MiB
-(adapter 27.78 + optimizer/scheduler 55.69), write 1.279 s, read 0.164 s.
+Checkpoint resume: **both** candidates reproduce their continuous run to
+**0.00e+00** across all 8 steps after the process is destroyed — no
+fresh-optimizer spike. Qwen3.5-0.8B's checkpoint is 83.48 MiB (adapter 27.78 +
+optimizer 55.69), LFM2.5-1.2B's is 127.31 MiB (42.40 + 84.91); both hold the
+same 2:1 optimizer-to-adapter ratio that an adapter-only save throws away.
 
 ## Coexistence: training costs the controller ~48%, and the controller costs training nothing
 
@@ -279,7 +281,6 @@ faithful, so any hybrid must beat it by enough to justify that loss.
   the 2.6B pair did not download.
 - **Task 7 at the 2-4B tier** — BF16 checkpoints did not finish downloading.
 
-- **LFM2.5-1.2B checkpoint resume** — only Qwen3.5-0.8B was resume-tested.
 - **Teacher-tier inference smoke** — recon only; no local 27-30B model was run.
 - Nemotron's state-semantics probes, abandoned after the decode measurement made
   it non-viable as a warm controller.
