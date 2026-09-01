@@ -1,0 +1,63 @@
+{
+  "label": "qwen35-08b",
+  "port": 8092,
+  "spine_tokens": 1625,
+  "delta_tokens": 139,
+  "ts": "2026-09-01T22:45:04Z",
+  "reference": {
+    "content": " HOLD\n\n<think>\n\n</think>\n\nACTION:",
+    "cache_n": 0,
+    "prompt_n": 1758,
+    "ttft_ms": 1888.083
+  },
+  "checkpoint": {
+    "bytes": 40172188,
+    "tokens": 1622,
+    "err": ""
+  },
+  "arms": [
+    {
+      "arm": "none",
+      "cache_n": 1618,
+      "prompt_n": 140,
+      "content": " HOLD\n\n<think>\n\n</think>\n\nACTION:",
+      "restore_err": "",
+      "matches_reference": true,
+      "restore_exercised": true
+    },
+    {
+      "arm": "self_prefix",
+      "cache_n": 1618,
+      "prompt_n": 140,
+      "content": " HOLD\n\n<think>\n\n</think>\n\nACTION:",
+      "restore_err": "",
+      "matches_reference": true,
+      "restore_exercised": true
+    },
+    {
+      "arm": "foreign_prefix",
+      "cache_n": 1620,
+      "prompt_n": 138,
+      "content": " HOLD\n\n<think>\n\n</think>\n\nACTION:",
+      "restore_err": "",
+      "matches_reference": true,
+      "restore_exercised": true
+    },
+    {
+      "arm": "none_after_foreign",
+      "cache_n": 1620,
+      "prompt_n": 138,
+      "content": " HOLD\n\n<think>\n\n</think>\n\nACTION:",
+      "restore_err": "",
+      "matches_reference": true,
+      "restore_exercised": true
+    }
+  ],
+  "verdict": {
+    "arms_exercising_restore": 4,
+    "arms_wrong": [],
+    "contamination_observed": false,
+    "persists_after_clean_restore": false
+  },
+  "deployment": "STATE RESTORE CLEAN ACROSS DOMAIN SWITCHES"
+}

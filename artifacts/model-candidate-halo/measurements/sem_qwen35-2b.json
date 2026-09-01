@@ -1,0 +1,80 @@
+{
+  "label": "qwen35-2b",
+  "port": 8090,
+  "ts": "2026-09-01T22:33:59Z",
+  "calibration": {
+    "spine_tokens": 1625,
+    "delta_tokens": 139,
+    "n_topo": 23,
+    "n_state": 17
+  },
+  "tags": {
+    "A": "9aed4d28629725c3",
+    "B": "938624adb13755bb"
+  },
+  "reference": {
+    "content": " HOLD\n</think>\n\nHOLD",
+    "cache_n": 0,
+    "prompt_n": 1758,
+    "ttft_ms": 3101.341
+  },
+  "checkpoints": {
+    "A": {
+      "file": "qwen35-2b.sem.A.state",
+      "bytes": 40172188,
+      "tokens": 1622,
+      "err": ""
+    },
+    "B": {
+      "file": "qwen35-2b.sem.B.state",
+      "bytes": 40196812,
+      "tokens": 1624,
+      "err": ""
+    }
+  },
+  "restored": {
+    "content": " HOLD\n</think>\n\nHOLD",
+    "cache_n": 1620,
+    "prompt_n": 138,
+    "ttft_ms": 255.23
+  },
+  "restore_err": "",
+  "A_equivalence": {
+    "pass": true,
+    "ref": " HOLD\n</think>\n\nHOLD",
+    "got": " HOLD\n</think>\n\nHOLD"
+  },
+  "B_not_recomputed": {
+    "pass": true,
+    "cache_n": 1620,
+    "spine_tokens": 1625,
+    "ttft_ms": 255.23
+  },
+  "C_isolation": {
+    "pass": true,
+    "foreign_tag_in_A_ctx": false,
+    "foreign_tag_in_B_ctx": false,
+    "outputs": [
+      " HOLD\n</think>\n\nACTION: HOLD",
+      " HOLD\n</think>\n\nHOLD"
+    ]
+  },
+  "D_update_ordering": {
+    "pass": true,
+    "q_turn21": " HOLD\n</think>\n\nHOLD",
+    "q_turn22": " HOLD\n</think>\n\nHOLD",
+    "q_turn21_repeat": " HOLD\n</think>\n\nHOLD",
+    "deltas_differ": false
+  },
+  "E_evict_restore": {
+    "pass": true,
+    "got": " HOLD\n</think>\n\nHOLD",
+    "ref": " HOLD\n</think>\n\nHOLD",
+    "cache_n": 0
+  },
+  "verdict": {
+    "all_pass": true,
+    "failed": []
+  },
+  "deployment": "STATE-SPINE DEPLOYABLE VIA EXPLICIT CHECKPOINT"
+}

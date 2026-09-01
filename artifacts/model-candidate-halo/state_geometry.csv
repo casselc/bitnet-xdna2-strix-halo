@@ -1,0 +1,10 @@
+model,arch,model_type,layers,hidden,n_attn_layers,n_recurrent_layers,n_conv_layers,kv_heads,head_dim,vocab,ctx,notes,kv_bytes_per_token,kv_kib_per_token,fixed_state_bytes,fixed_state_mib,mib_at_1600tok,mib_at_1735tok,domains_at_8gib,domains_at_16gib,domains_at_32gib
+LiquidAI/LFM2.5-1.2B-Instruct,Lfm2ForCausalLM,lfm2,16,2048,6,0,10,8,64,65536,128000,6 attn x 8 kv x 64 hd x2(KV) x2B; 10 conv x 3 x 2048 x2B = 120 KiB,12288,12.0,122880,0.117,18.87,20.45,400,801,1602
+LiquidAI/LFM2.5-2.6B,Lfm2ForCausalLM,lfm2,30,2048,8,0,22,8,64,128000,131072,8 attn x 8 kv x 64 hd x2(KV) x2B; 22 conv x 3 x 2048 x2B = 264 KiB,16384,16.0,270336,0.258,25.26,27.37,299,598,1197
+LiquidAI/LFM2.5-8B-A1B,Lfm2MoeForCausalLM,lfm2_moe,24,2048,6,0,18,8,64,128000,128000,6 attn x 8 kv x 64 hd x2(KV) x2B; 18 conv x 3 x 2048 x2B = 216 KiB,12288,12.0,221184,0.211,18.96,20.54,398,797,1595
+Qwen/Qwen3-0.6B,Qwen3ForCausalLM,qwen3,28,1024,28,0,0,8,128,151936,40960,28 attn x 8 kv x 128 hd x2(KV) x2B,114688,112.0,0,0.0,175.0,189.77,43,86,172
+Qwen/Qwen3-1.7B,Qwen3ForCausalLM,qwen3,28,2048,28,0,0,8,128,151936,40960,28 attn x 8 kv x 128 hd x2(KV) x2B,114688,112.0,0,0.0,175.0,189.77,43,86,172
+Qwen/Qwen3.5-0.8B,Qwen3_5ForConditionalGeneration,qwen3_5_text,24,1024,6,18,0,2,256,248320,262144,6 attn x 2 kv x 256 hd x2(KV) x2B; 18 deltanet x 16h x 128x128 x4B = 18.0 MiB; deltanet conv 648 KiB,12288,12.0,19537920,18.633,37.38,38.96,210,420,840
+Qwen/Qwen3.5-2B,Qwen3_5ForConditionalGeneration,qwen3_5_text,24,2048,6,18,0,2,256,248320,262144,6 attn x 2 kv x 256 hd x2(KV) x2B; 18 deltanet x 16h x 128x128 x4B = 18.0 MiB; deltanet conv 648 KiB,12288,12.0,19537920,18.633,37.38,38.96,210,420,840
+nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16,NemotronHForCausalLM,nemotron_h,42,3136,4,21,0,8,128,131072,262144,4 attn x 8 kv x 128 hd x2(KV) x2B; 21 mamba2 x 96h x 80 x 128 x2B = 39.4 MiB; mamba conv 1.00 MiB,16384,16.0,42336000,40.375,65.37,67.48,121,242,485
+microsoft/BitNet-b1.58-2B-4T,BitNetForCausalLM,bitnet-b1.58,30,2560,30,0,0,5,128,128256,4096,30 attn x 5 kv x 128 hd x2(KV) x2B (controller-state-envelope 6),76800,75.0,0,0.0,117.19,127.08,64,128,257

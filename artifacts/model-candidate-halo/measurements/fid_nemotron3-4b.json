@@ -1,0 +1,53 @@
+{
+  "label": "nemotron3-4b",
+  "spine_tokens": 1586,
+  "delta_tokens": 141,
+  "checkpoint_bytes": 111021492,
+  "tolerance": 0.01,
+  "ts": "2026-09-01T22:58:03Z",
+  "reference": {
+    "cache_n": 0,
+    "content": " H"
+  },
+  "arms": [
+    {
+      "arm": "none",
+      "cache_n": 1581,
+      "restore_exercised": true,
+      "argmax_same": true,
+      "max_abs_dlogprob": 0.13393688201904297,
+      "common_topk": 20,
+      "within_tol": false
+    },
+    {
+      "arm": "self_prefix",
+      "cache_n": 1581,
+      "restore_exercised": true,
+      "argmax_same": true,
+      "max_abs_dlogprob": 0.13393688201904297,
+      "common_topk": 20,
+      "within_tol": false
+    },
+    {
+      "arm": "foreign_prefix",
+      "cache_n": 0,
+      "restore_exercised": false,
+      "argmax_same": true,
+      "max_abs_dlogprob": 0.0,
+      "common_topk": 20,
+      "within_tol": true
+    },
+    {
+      "arm": "none_after_foreign",
+      "cache_n": 0,
+      "restore_exercised": false,
+      "argmax_same": true,
+      "max_abs_dlogprob": 0.0,
+      "common_topk": 20,
+      "within_tol": true
+    }
+  ],
+  "worst_dlogprob_over_exercised_arms": 0.13393688201904297,
+  "bit_faithful_restore": false,
+  "argmax_stable": true
+}

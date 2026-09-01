@@ -1,0 +1,82 @@
+{
+  "label": "lfm25-12b",
+  "port": 8091,
+  "ts": "2026-09-01T22:35:48Z",
+  "calibration": {
+    "spine_tokens": 1575,
+    "delta_tokens": 135,
+    "n_topo": 26,
+    "n_state": 19
+  },
+  "tags": {
+    "A": "9aed4d28629725c3",
+    "B": "938624adb13755bb"
+  },
+  "reference": {
+    "content": " 1\n```\n\nOUTPUT\n ",
+    "cache_n": 0,
+    "prompt_n": 1710,
+    "ttft_ms": 1180.062
+  },
+  "checkpoints": {
+    "A": {
+      "file": "lfm25-12b.sem.A.state",
+      "bytes": 19555404,
+      "tokens": 1576,
+      "err": ""
+    },
+    "B": {
+      "file": "lfm25-12b.sem.B.state",
+      "bytes": 19506188,
+      "tokens": 1572,
+      "err": ""
+    }
+  },
+  "restored": {
+    "content": " 1\nRECOMMENDATION",
+    "cache_n": 1568,
+    "prompt_n": 142,
+    "ttft_ms": 117.053
+  },
+  "restore_err": "",
+  "A_equivalence": {
+    "pass": false,
+    "ref": " 1\n```\n\nOUTPUT\n ",
+    "got": " 1\nRECOMMENDATION"
+  },
+  "B_not_recomputed": {
+    "pass": true,
+    "cache_n": 1568,
+    "spine_tokens": 1575,
+    "ttft_ms": 117.053
+  },
+  "C_isolation": {
+    "pass": true,
+    "foreign_tag_in_A_ctx": false,
+    "foreign_tag_in_B_ctx": false,
+    "outputs": [
+      " RESTART\n  </HOLD",
+      " RESTART\n  ROLLB"
+    ]
+  },
+  "D_update_ordering": {
+    "pass": true,
+    "q_turn21": " 1\nRECOMMENDATION",
+    "q_turn22": " 1\nRECOMMENDATION",
+    "q_turn21_repeat": " 1\nRECOMMENDATION",
+    "deltas_differ": false
+  },
+  "E_evict_restore": {
+    "pass": true,
+    "got": " 1\n```\n\nOUTPUT\n ",
+    "ref": " 1\n```\n\nOUTPUT\n ",
+    "cache_n": 0
+  },
+  "verdict": {
+    "all_pass": false,
+    "failed": [
+      "A_equivalence"
+    ]
+  },
+  "deployment": "STATE-SPINE DEPLOYMENT BLOCKED IN THIS RUNTIME"
+}

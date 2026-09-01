@@ -1,0 +1,53 @@
+{
+  "label": "lfm25-12b",
+  "spine_tokens": 1575,
+  "delta_tokens": 135,
+  "checkpoint_bytes": 19555404,
+  "tolerance": 0.01,
+  "ts": "2026-09-01T22:49:51Z",
+  "reference": {
+    "cache_n": 0,
+    "content": " "
+  },
+  "arms": [
+    {
+      "arm": "none",
+      "cache_n": 1572,
+      "restore_exercised": true,
+      "argmax_same": true,
+      "max_abs_dlogprob": 0.0,
+      "common_topk": 20,
+      "within_tol": true
+    },
+    {
+      "arm": "self_prefix",
+      "cache_n": 1572,
+      "restore_exercised": true,
+      "argmax_same": true,
+      "max_abs_dlogprob": 0.0,
+      "common_topk": 20,
+      "within_tol": true
+    },
+    {
+      "arm": "foreign_prefix",
+      "cache_n": 1568,
+      "restore_exercised": true,
+      "argmax_same": true,
+      "max_abs_dlogprob": 0.18302011489868164,
+      "common_topk": 20,
+      "within_tol": false
+    },
+    {
+      "arm": "none_after_foreign",
+      "cache_n": 1568,
+      "restore_exercised": true,
+      "argmax_same": true,
+      "max_abs_dlogprob": 0.18302011489868164,
+      "common_topk": 20,
+      "within_tol": false
+    }
+  ],
+  "worst_dlogprob_over_exercised_arms": 0.18302011489868164,
+  "bit_faithful_restore": false,
+  "argmax_stable": true
+}

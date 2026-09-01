@@ -1,0 +1,53 @@
+{
+  "label": "lfm25-26b",
+  "spine_tokens": 1614,
+  "delta_tokens": 135,
+  "checkpoint_bytes": 26847244,
+  "tolerance": 0.01,
+  "ts": "2026-09-01T22:49:30Z",
+  "reference": {
+    "cache_n": 0,
+    "content": " SV"
+  },
+  "arms": [
+    {
+      "arm": "none",
+      "cache_n": 1611,
+      "restore_exercised": true,
+      "argmax_same": true,
+      "max_abs_dlogprob": 0.30381345748901367,
+      "common_topk": 19,
+      "within_tol": false
+    },
+    {
+      "arm": "self_prefix",
+      "cache_n": 1611,
+      "restore_exercised": true,
+      "argmax_same": true,
+      "max_abs_dlogprob": 0.30381345748901367,
+      "common_topk": 19,
+      "within_tol": false
+    },
+    {
+      "arm": "foreign_prefix",
+      "cache_n": 1607,
+      "restore_exercised": true,
+      "argmax_same": true,
+      "max_abs_dlogprob": 0.46034955978393555,
+      "common_topk": 18,
+      "within_tol": false
+    },
+    {
+      "arm": "none_after_foreign",
+      "cache_n": 1607,
+      "restore_exercised": true,
+      "argmax_same": true,
+      "max_abs_dlogprob": 0.46034955978393555,
+      "common_topk": 18,
+      "within_tol": false
+    }
+  ],
+  "worst_dlogprob_over_exercised_arms": 0.46034955978393555,
+  "bit_faithful_restore": false,
+  "argmax_stable": true
+}

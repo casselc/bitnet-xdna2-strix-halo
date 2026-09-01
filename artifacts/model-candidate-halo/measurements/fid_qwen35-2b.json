@@ -1,0 +1,53 @@
+{
+  "label": "qwen35-2b",
+  "spine_tokens": 1625,
+  "delta_tokens": 139,
+  "checkpoint_bytes": 40172188,
+  "tolerance": 0.01,
+  "ts": "2026-09-01T22:50:05Z",
+  "reference": {
+    "cache_n": 0,
+    "content": " HOLD"
+  },
+  "arms": [
+    {
+      "arm": "none",
+      "cache_n": 1618,
+      "restore_exercised": true,
+      "argmax_same": true,
+      "max_abs_dlogprob": 0.20805692672729492,
+      "common_topk": 20,
+      "within_tol": false
+    },
+    {
+      "arm": "self_prefix",
+      "cache_n": 1618,
+      "restore_exercised": true,
+      "argmax_same": true,
+      "max_abs_dlogprob": 0.20805692672729492,
+      "common_topk": 20,
+      "within_tol": false
+    },
+    {
+      "arm": "foreign_prefix",
+      "cache_n": 1620,
+      "restore_exercised": true,
+      "argmax_same": true,
+      "max_abs_dlogprob": 0.4124422073364258,
+      "common_topk": 20,
+      "within_tol": false
+    },
+    {
+      "arm": "none_after_foreign",
+      "cache_n": 1620,
+      "restore_exercised": true,
+      "argmax_same": true,
+      "max_abs_dlogprob": 0.4124422073364258,
+      "common_topk": 20,
+      "within_tol": false
+    }
+  ],
+  "worst_dlogprob_over_exercised_arms": 0.4124422073364258,
+  "bit_faithful_restore": false,
+  "argmax_stable": true
+}

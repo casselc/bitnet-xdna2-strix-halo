@@ -1,0 +1,63 @@
+{
+  "label": "lfm25-26b",
+  "port": 8093,
+  "spine_tokens": 1614,
+  "delta_tokens": 135,
+  "ts": "2026-09-01T22:47:37Z",
+  "reference": {
+    "content": " SVC001 HOLD\n\n... (",
+    "cache_n": 0,
+    "prompt_n": 1749,
+    "ttft_ms": 2801.083
+  },
+  "checkpoint": {
+    "bytes": 26847244,
+    "tokens": 1615,
+    "err": ""
+  },
+  "arms": [
+    {
+      "arm": "none",
+      "cache_n": 1611,
+      "prompt_n": 138,
+      "content": " SVC001 HOLD\n\n... (",
+      "restore_err": "",
+      "matches_reference": true,
+      "restore_exercised": true
+    },
+    {
+      "arm": "self_prefix",
+      "cache_n": 1611,
+      "prompt_n": 138,
+      "content": " SVC001 HOLD\n\n... (",
+      "restore_err": "",
+      "matches_reference": true,
+      "restore_exercised": true
+    },
+    {
+      "arm": "foreign_prefix",
+      "cache_n": 1607,
+      "prompt_n": 142,
+      "content": " SVC001 HOLD\n\n... (",
+      "restore_err": "",
+      "matches_reference": true,
+      "restore_exercised": true
+    },
+    {
+      "arm": "none_after_foreign",
+      "cache_n": 1607,
+      "prompt_n": 142,
+      "content": " SVC001 HOLD\n\n... (",
+      "restore_err": "",
+      "matches_reference": true,
+      "restore_exercised": true
+    }
+  ],
+  "verdict": {
+    "arms_exercising_restore": 4,
+    "arms_wrong": [],
+    "contamination_observed": false,
+    "persists_after_clean_restore": false
+  },
+  "deployment": "STATE RESTORE CLEAN ACROSS DOMAIN SWITCHES"
+}

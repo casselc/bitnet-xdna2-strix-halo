@@ -1,0 +1,66 @@
+{
+  "label": "lfm25-12b",
+  "port": 8091,
+  "spine_tokens": 1575,
+  "delta_tokens": 135,
+  "ts": "2026-09-01T22:39:54Z",
+  "reference": {
+    "content": " 1\n```\n\nOUTPUT\n ",
+    "cache_n": 0,
+    "prompt_n": 1710,
+    "ttft_ms": 1190.787
+  },
+  "checkpoint": {
+    "bytes": 19555404,
+    "tokens": 1576,
+    "err": ""
+  },
+  "arms": [
+    {
+      "arm": "none",
+      "cache_n": 1572,
+      "prompt_n": 138,
+      "content": " 1\n```\n\nOUTPUT\n ",
+      "restore_err": "",
+      "matches_reference": true,
+      "restore_exercised": true
+    },
+    {
+      "arm": "self_prefix",
+      "cache_n": 1572,
+      "prompt_n": 138,
+      "content": " 1\n```\n\nOUTPUT\n ",
+      "restore_err": "",
+      "matches_reference": true,
+      "restore_exercised": true
+    },
+    {
+      "arm": "foreign_prefix",
+      "cache_n": 1568,
+      "prompt_n": 142,
+      "content": " 1\nRECOMMENDATION",
+      "restore_err": "",
+      "matches_reference": false,
+      "restore_exercised": true
+    },
+    {
+      "arm": "none_after_foreign",
+      "cache_n": 1568,
+      "prompt_n": 142,
+      "content": " 1\nRECOMMENDATION",
+      "restore_err": "",
+      "matches_reference": false,
+      "restore_exercised": true
+    }
+  ],
+  "verdict": {
+    "arms_exercising_restore": 4,
+    "arms_wrong": [
+      "foreign_prefix",
+      "none_after_foreign"
+    ],
+    "contamination_observed": true,
+    "persists_after_clean_restore": true
+  },
+  "deployment": "STATE-SPINE DEPLOYMENT BLOCKED IN THIS RUNTIME (slot residue changes the decision)"
+}

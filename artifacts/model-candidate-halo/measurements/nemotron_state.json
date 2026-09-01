@@ -1,0 +1,10 @@
+{
+  "label": "nemotron3-4b",
+  "spine_tokens": 1586,
+  "delta_tokens": 141,
+  "state_spine_bytes": 113268292,
+  "state_spine_delta_bytes": 113268292,
+  "marginal_bytes_per_token": 0.0,
+  "spine_prefill_ms": 8748.06,
+  "decode_tps_observed": 0.8
+}

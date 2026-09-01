@@ -1,0 +1,53 @@
+{
+  "label": "bitnet-ctl",
+  "spine_tokens": 1600,
+  "delta_tokens": 146,
+  "checkpoint_bytes": 122906376,
+  "tolerance": 0.01,
+  "ts": "2026-09-01T22:50:48Z",
+  "reference": {
+    "cache_n": 0,
+    "content": " "
+  },
+  "arms": [
+    {
+      "arm": "none",
+      "cache_n": 1600,
+      "restore_exercised": true,
+      "argmax_same": true,
+      "max_abs_dlogprob": 0.0,
+      "common_topk": 20,
+      "within_tol": true
+    },
+    {
+      "arm": "self_prefix",
+      "cache_n": 1600,
+      "restore_exercised": true,
+      "argmax_same": true,
+      "max_abs_dlogprob": 0.0,
+      "common_topk": 20,
+      "within_tol": true
+    },
+    {
+      "arm": "foreign_prefix",
+      "cache_n": 1600,
+      "restore_exercised": true,
+      "argmax_same": true,
+      "max_abs_dlogprob": 0.0,
+      "common_topk": 20,
+      "within_tol": true
+    },
+    {
+      "arm": "none_after_foreign",
+      "cache_n": 1600,
+      "restore_exercised": true,
+      "argmax_same": true,
+      "max_abs_dlogprob": 0.0,
+      "common_topk": 20,
+      "within_tol": true
+    }
+  ],
+  "worst_dlogprob_over_exercised_arms": 0,
+  "bit_faithful_restore": true,
+  "argmax_stable": true
+}
