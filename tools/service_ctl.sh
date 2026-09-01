@@ -83,12 +83,26 @@ case "${1:-}" in
     BITNET_XDNA_NE11_EVERY="${NE11_EVERY:-210}" \
     nohup "$CTRL_BIN" -m "$CTRL_MODEL" -t "$T" -ngl 0 \
         -c "${CTRL_CTX:-20480}" -np "${CTRL_SLOTS:-8}" \
-        -ub 2048 -b 2048 --host 127.0.0.1 --port 8081 --no-webui \
+        -b "${CTRL_B:-2048}" -ub "${CTRL_UB:-2048}" \
+        ${CTRL_TB:+-tb "$CTRL_TB"} \
+        ${CACHE_RAM:+--cache-ram "$CACHE_RAM"} \
+        --host 127.0.0.1 --port 8081 --no-webui \
         > "$RUN/ctrl.log" 2>&1 < /dev/null &
     echo $! > "$RUN/ctrl.pid"
-    wait_health 8081 180 || { echo "controller FAILED to become healthy"; tail -5 "$RUN/ctrl.log"; exit 1; }
+    wait_health 8081 300 || { echo "controller FAILED to become healthy"; tail -5 "$RUN/ctrl.log"; exit 1; }
     assert_owner 8081 "$(cat "$RUN/ctrl.pid")"
-    echo "controller up t=$T pid=$(cat "$RUN/ctrl.pid")"
+    # /health does NOT mean the XDNA weights are resident -- they are expanded
+    # and uploaded on the first qualifying prefill, so the first request after
+    # any restart carries a one-time cost (~0.6-1.1 s measured). Warm before the
+    # measurement window opens, never inside it.
+    if [ "${CTRL_WARMUP:-1}" = "1" ]; then
+        "$R/tools/service_warmup.py" --port 8081 --label "t=$T" \
+            --out "${WARMUP_OUT:-$RUN/warmup.json}" \
+            || { echo "controller warmup FAILED"; exit 1; }
+    fi
+    echo "controller up t=$T tb=${CTRL_TB:-<=t} b=${CTRL_B:-2048} ub=${CTRL_UB:-2048}" \
+         "np=${CTRL_SLOTS:-8} ctx=${CTRL_CTX:-20480} cache_ram=${CACHE_RAM:-default}" \
+         "pid=$(cat "$RUN/ctrl.pid")"
     ;;
   start-work)
     stop_pidfile "$RUN/work.pid"

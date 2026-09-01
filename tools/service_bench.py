@@ -83,8 +83,18 @@ class Req:
     def row(self):
         d = dict(rid=self.rid, cls=self.cls, threads=self.threads,
                  concurrency=self.conc, err=self.err or "")
+        if self.err:
+            # A FAILED request has no latency. Emitting its client wall as
+            # total_ms is what produced the impossible "total < TTFT" in
+            # controller-state-scheduler: 24 HTTP 400s at ~2 ms were folded
+            # into the total percentiles while contributing no TTFT, so the two
+            # statistics came from different populations. Fail closed instead.
+            return d
         if self.t_submit and self.t_end:
             d["total_ms"] = round((self.t_end - self.t_submit) * 1e3, 2)
+            d["client_total_ms"] = d["total_ms"]
+        if self.t_submit and self.t_first:
+            d["client_ttft_ms"] = round((self.t_first - self.t_submit) * 1e3, 2)
         s = self.server
         for k_out, k_in in (("prompt_n", "prompt_n"), ("gen_n", "predicted_n"),
                             ("prompt_ms", "prompt_ms"),
@@ -111,15 +121,55 @@ class Req:
             # TTFT as the server sees it: prompt processing plus one token.
             per_tok = (s["predicted_ms"] / s["predicted_n"]
                        if s.get("predicted_n") else 0.0)
-            d["ttft_ms"] = round(s["prompt_ms"] + per_tok, 2)
+            d["ttft_derived_ms"] = round(s["prompt_ms"] + per_tok, 2)
+        # Prefer the MEASURED first-token arrival; fall back to the server-side
+        # reconstruction only when not streaming, and say which was used.
+        if d.get("client_ttft_ms") is not None:
+            d["ttft_ms"] = d["client_ttft_ms"]
+            d["ttft_source"] = "client_stream"
+        elif d.get("ttft_derived_ms") is not None:
+            d["ttft_ms"] = d["ttft_derived_ms"]
+            d["ttft_source"] = "server_derived"
             if s.get("predicted_per_second"):
                 d["gen_tok_s"] = round(s["predicted_per_second"], 3)
         d.update(self.chain)
         return d
 
 
+def post_stream(base, path, payload, timeout=600):
+    """SSE POST returning (first_content_chunk_time, final_json, text).
+
+    The first timestamp is the point of this: everything before it -- admission,
+    scheduling, prompt processing, transport -- is what a caller actually waits
+    for a first token, and a server-side reconstruction cannot see any of it.
+    """
+    body = dict(payload); body["stream"] = True
+    req = urllib.request.Request(base + path, data=json.dumps(body).encode(),
+                                 headers={"Content-Type": "application/json"})
+    t_first, final, text = None, {}, []
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        for raw in resp:
+            if not raw.startswith(b"data:"):
+                continue
+            chunk = raw[5:].strip()
+            if not chunk or chunk == b"[DONE]":
+                continue
+            try:
+                j = json.loads(chunk)
+            except json.JSONDecodeError:
+                continue
+            c = j.get("content")
+            if c:
+                text.append(c)
+            if t_first is None and c:
+                t_first = time.time()
+            if j.get("timings") or j.get("stop"):
+                final = j
+    return t_first, final, "".join(text)
+
+
 def run_controller(rid, threads, conc, n_predict, prompt, cache=False,
-                   capture_text=False, extra=None):
+                   capture_text=False, extra=None, stream=True):
     r = Req(rid, "C", threads, conc)
     r.t_submit = time.time()
     try:
@@ -127,11 +177,17 @@ def run_controller(rid, threads, conc, n_predict, prompt, cache=False,
                     seed=42, cache_prompt=bool(cache))
         if extra:
             body.update(extra)
-        d = post(CTRL, "/completion", body)
+        if stream:
+            r.t_first, d, text = post_stream(CTRL, "/completion", body)
+            if capture_text:
+                r.chain["text"] = text
+                r.chain["tokens"] = len(d.get("tokens", []) or [])
+        else:
+            d = post(CTRL, "/completion", body)
+            if capture_text:
+                r.chain["text"] = d.get("content", "")
+                r.chain["tokens"] = len(d.get("tokens", []) or [])
         r.server = d.get("timings", {})
-        if capture_text:
-            r.chain["text"] = d.get("content", "")
-            r.chain["tokens"] = len(d.get("tokens", []) or [])
     except Exception as e:
         r.err = f"{type(e).__name__}: {str(e)[:80]}"
     r.t_end = time.time()
@@ -201,6 +257,86 @@ def pct(v, p):
         return None
     v = sorted(v)
     return round(v[min(len(v) - 1, int(p * len(v)))], 2)
+
+
+def slot_context(base=None):
+    """Per-slot context window the server will actually accept.
+
+    NOT simply n_ctx/n_parallel: the server also caps at the model's
+    max_position_embeddings (4096 for BitNet-b1.58-2B-4T), so a large -c does
+    not buy a longer single sequence. Returns None if it cannot be determined.
+    """
+    import urllib.request as _u
+    try:
+        with _u.urlopen((base or CTRL) + "/props", timeout=10) as r:
+            d = json.loads(r.read())
+        return int(d.get("default_generation_settings", {}).get("n_ctx"))
+    except Exception:
+        return None
+
+
+def count_tokens(text, base=None):
+    """Token count from the server's own tokenizer -- never a chars/token guess."""
+    try:
+        d = post(base or CTRL, "/tokenize", {"content": text}, timeout=120)
+        return len(d["tokens"])
+    except Exception:
+        return None
+
+
+def preflight_length(prompt, base=None, headroom=0, label=""):
+    """Fail LOUDLY if a prompt cannot fit the slot, instead of collecting 400s.
+
+    controller-state-scheduler's 50-turn spine silently overflowed at turn 27
+    and recorded 24 HTTP 400s as ~2 ms completions. Checking up front converts
+    that into an immediate, obvious error.
+    """
+    ctx, n = slot_context(base), count_tokens(prompt, base)
+    if ctx is None or n is None:
+        return None, None
+    if n + headroom > ctx:
+        raise RuntimeError(
+            f"prompt{' ' + label if label else ''} is {n} tokens (+{headroom} "
+            f"headroom) but the slot context is {ctx}; this WILL return HTTP 400. "
+            f"Raise -c / lower -np, or shorten the spine.")
+    return n, ctx
+
+
+def assert_timing_sane(rows, label=""):
+    """Mechanically enforce request_start <= first_token <= request_end.
+
+    controller-state-scheduler published a state-spine table where total p50
+    (122 ms) was BELOW TTFT p50 (147 ms), which is impossible for one request.
+    The cause was not a bad clock: 24 of 50 turns were HTTP 400s (the spine had
+    grown past the 2560-token slot context) whose ~2 ms client wall was counted
+    as total_ms while contributing no TTFT, so the two percentiles came from
+    different populations.
+
+    Returns (ok_rows, violations). Callers must summarize ONLY ok_rows, and must
+    report violations rather than dropping them silently.
+    """
+    ok, bad = [], []
+    for r in rows:
+        if r.get("err"):
+            bad.append(dict(rid=r.get("rid"), why="request failed", err=r["err"]))
+            continue
+        t, tot = r.get("ttft_ms"), r.get("total_ms")
+        if t is None or tot is None:
+            bad.append(dict(rid=r.get("rid"), why="missing ttft_ms or total_ms",
+                            ttft_ms=t, total_ms=tot))
+            continue
+        if t > tot + 1e-6:
+            bad.append(dict(rid=r.get("rid"), why="ttft > total",
+                            ttft_ms=t, total_ms=tot))
+            continue
+        ok.append(r)
+    if bad:
+        print(f"  [timing audit{' ' + label if label else ''}] "
+              f"{len(ok)} usable, {len(bad)} EXCLUDED: "
+              f"{bad[0]['why']} (and {len(bad)-1} more)" if len(bad) > 1 else
+              f"  [timing audit{' ' + label if label else ''}] "
+              f"{len(ok)} usable, 1 EXCLUDED: {bad[0]['why']}")
+    return ok, bad
 
 
 def summarize(rows, key):

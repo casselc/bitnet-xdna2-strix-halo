@@ -1,0 +1,5 @@
+check,ok,detail
+state version unchanged by forks,1,bd799904ac242ad0 -> bd799904ac242ad0
+state version changed by authoritative delta,1,bd799904ac242ad0 -> fda6254b68c3f34d
+projection equals independent replay S+D,1,prompt text identical
+post-fork query matches fresh-replay query,1,' p95=1'

@@ -1,0 +1,5 @@
+cell,domains,requests,usable,excluded,concurrency,n_predict,delta_lines,threads,wall_s,req_per_s,eval_mean,reused_mean,supplied_mean,ttft_p50,ttft_p95,total_p50,total_p95,contaminated,watts,gpu_busy_med,config,round,t,tb,b,ub,server,rss_mib
+r0-A,8,20,20,0,1,4,8,8,4.8,4.169,72.3,1660.8,1733.2,292.73,308.23,342.09,360.7,0,96.5,0.0,A state-scheduler (t8 b2048 ub2048),0,8,,2048,2048,controller up t=8 tb=<=t b=2048 ub=2048 np=8 ctx=40960 cache_ram=default pid=339,9294.2
+r0-B,8,20,20,0,1,4,8,4,4.23,4.733,72.3,1660.8,1733.2,217.5,228.07,282.05,293.38,0,94.4,0,B service-batching (t4 tb16 b4096 ub4096),0,4,16,4096,4096,controller up t=4 tb=16 b=4096 ub=4096 np=8 ctx=40960 cache_ram=default pid=1676,9302.3
+r1-B,8,20,20,0,1,4,8,4,4.19,4.77,72.3,1660.8,1733.2,218.08,224.33,282.14,299.54,0,94.2,0,B service-batching (t4 tb16 b4096 ub4096),1,4,16,4096,4096,controller up t=4 tb=16 b=4096 ub=4096 np=8 ctx=40960 cache_ram=default pid=2652,9302.4
+r1-A,8,20,20,0,1,4,8,8,4.86,4.119,72.3,1660.8,1733.2,294.1,313.96,344.96,363.9,0,95.8,0.0,A state-scheduler (t8 b2048 ub2048),1,8,,2048,2048,controller up t=8 tb=<=t b=2048 ub=2048 np=8 ctx=40960 cache_ram=default pid=3668,9294.2

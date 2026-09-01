@@ -19,7 +19,8 @@ import argparse, csv, hashlib, json, statistics as st, sys, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from service_bench import run_controller, write_rows, pct, summarize
+from service_bench import (run_controller, write_rows, pct, summarize,
+                           assert_timing_sane, preflight_length)
 from prefix_bench import STABLE, topo_line, state_line
 
 
@@ -57,8 +58,13 @@ class Authoritative:
 def turn_row(label, turn, r, extra=None):
     d = dict(regime=label, turn=turn)
     row = r.row()
+    # `err` MUST be carried. Without it a failed request looked like a ~2 ms
+    # completion: 24 of 50 turns were HTTP 400s once the spine outgrew the
+    # 2560-token slot context, and their client wall was folded into total_ms
+    # while contributing no ttft_ms, producing "total p50 below TTFT p50".
+    d["err"] = row.get("err", "")
     for k in ("supplied_n", "reused_n", "eval_n", "prompt_ms", "ttft_ms",
-              "total_ms"):
+              "client_ttft_ms", "ttft_derived_ms", "ttft_source", "total_ms"):
         if row.get(k) is not None:
             d[k] = row[k]
     if extra:
@@ -102,6 +108,16 @@ def main():
                                       state_version=auth.version())))
         return auth
 
+    # PREFLIGHT: build the worst case (the final turn) and prove it fits before
+    # spending an hour collecting HTTP 400s, which is exactly how the previous
+    # run silently became a 26-turn experiment.
+    probe = Authoritative()
+    for t in range(1, a.turns + 1):
+        probe.apply(event(t))
+    n, ctx = preflight_length(probe.query_prompt("final turn"),
+                              headroom=a.predict + 8, label=f"turn {a.turns} query")
+    print(f"preflight: final-turn prompt is {n} tokens, slot context {ctx} -- fits\n")
+
     print(f"TASK 7 -- {a.turns} state updates, three regimes\n")
     run_regime("A rebuild (no reuse)", reuse=False)
     run_regime("B spine reuse", reuse=True)
@@ -117,7 +133,14 @@ def main():
                    eval_p50=pct([x["eval_n"] for x in sub if x.get("eval_n")], .5),
                    reused_p50=pct([x.get("reused_n", 0) for x in sub], .5),
                    eval_total=sum(x.get("eval_n", 0) for x in sub))
-        rec.update(summarize(sub, "ttft_ms")); rec.update(summarize(sub, "total_ms"))
+        # Summarize ONLY records that satisfy start <= first_token <= end.
+        # Both statistics must come from the SAME population; that they did not
+        # is the defect this branch exists to correct.
+        good, bad = assert_timing_sane(sub, label)
+        rec["turns_usable"] = len(good)
+        rec["turns_excluded"] = len(bad)
+        rec["first_exclusion"] = bad[0]["why"] if bad else ""
+        rec.update(summarize(good, "ttft_ms")); rec.update(summarize(good, "total_ms"))
         summ.append(rec)
         print(f"{label:>22}{rec['eval_p50']:>10}{rec['reused_p50']:>12}"
               f"{rec['ttft_ms_p50']:>10}{rec['ttft_ms_p95']:>10}"
