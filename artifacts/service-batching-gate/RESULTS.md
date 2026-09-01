@@ -194,3 +194,78 @@ that round, which is what run-to-run dispersion at this scale looks like and is 
 reason a single A/B pair would not have supported the claim.
 
 Raw: `lease_overhead.csv`, `lease_overhead.json`.
+
+## 5. The primary discriminator: does `-b/-ub 2048` cause "concurrency ~1"? [MEASURED]
+
+`tools/batch_gate.py`. Warmed `t8`, 1954-token prompts, `n_predict=32`, 8 requests per
+cell, every cell inside the ne11 histogram, lease window, `/slots` sampler and power.
+
+| cell | req/s | TTFT p50 | TTFT p95 | total p95 | ne11 max | lease acq | slots busy | W |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| b2048 np1 c1 | 0.345 | 2340 | 2378 | 2930 | 1024 | 1184 | 0.83 | 95 |
+| b2048 np2 c1 | 0.343 | 2368 | 2395 | 2950 | 1024 | 1184 | 0.83 | 93 |
+| b2048 np2 c2 | 0.359 | 4699 | 4761 | 5616 | 1024 | 1184 | 1.52 | 96 |
+| b2048 np8 c2 | 0.356 | 4725 | 4799 | 5651 | 1024 | 1184 | 1.62 | 96 |
+| b2048 np8 c4 | 0.375 | 4829 | 9615 | 15469 | 1024 | 1184 | 2.62 | 96 |
+| b4096 np1 c1 | 0.341 | 2364 | 2418 | 2974 | 1024 | 1184 | 0.87 | 93 |
+| b4096 np2 c1 | 0.343 | 2347 | 2398 | 2971 | 1024 | 1184 | 0.85 | 92 |
+| **b4096 np2 c2** | **0.394** | **4232** | **4238** | **5101** | **2048** | **576** | 1.61 | **91** |
+| **b4096 np8 c2** | **0.390** | **4252** | **4266** | **5166** | **2048** | **576** | 1.68 | **91** |
+| b4096 np8 c4 | 0.390 | 6851 | 9106 | 14826 | 2048 | 896 | 2.77 | 94 |
+
+### H1 is confirmed as a mechanism [MEASURED]
+
+**At `-ub 2048` two concurrent 1954-token requests never share a graph. At `-ub 4096`
+they do.** The ne11 histogram shows it directly: offloaded work moves from bucket
+[1024, 2048) to bucket [2048, 4096) exactly when the ceiling is raised and `c >= 2`.
+
+The lease counter corroborates it independently: **1184 -> 576 acquisitions for the
+same 8 requests**. Two prompts sharing one graph means one set of NPU invocations
+instead of two, so the count halves. Two instruments, different mechanisms, same
+conclusion.
+
+`np` alone changes nothing (np1/np2/np8 at c1 are 0.341–0.345). Slot count is not the
+gate; the **ubatch ceiling** is.
+
+### H1 is refuted as the cause of the throughput result [MEASURED]
+
+Batch formation was genuinely suppressed, and fixing it is worth having:
+
+| going from | to | throughput | TTFT p50 | TTFT p95 | power |
+|---|---|---|---|---|---|
+| b2048 c2 | b4096 c2 | +9.7% | −9.9% | −11.0% | −5 W |
+| b2048 c4 | b4096 c4 | +4.0% | +41.9% | −5.3% | −2 W |
+
+But it does not change the regime. At the best configuration (`b4096`), going from
+one in-flight request to two buys **+14.9% throughput (0.343 -> 0.394 req/s) and costs
++80% TTFT (2347 -> 4232 ms)**. Going to four buys nothing further (0.390) and costs a
+2.9x total p95. Prefill is bandwidth-bound; combining two prompts into one larger
+matrix does not make the memory system faster, it only removes per-graph overhead —
+which is where the ~15% and the 5 W come from.
+
+## 6. Explicit multi-prompt oracle [MEASURED — server batch formation is NOT the limit]
+
+The pinned `/completion` accepts a list of prompts, so an explicit batch can be
+compared against independent simultaneous requests.
+
+| config | independent | explicit multi-prompt | ne11 max (both) |
+|---|---:|---:|---:|
+| b2048 np2, k=2 | 0.356–0.359 | 0.357 | 1024 |
+| b2048 np8, k=4 | 0.375 | 0.387 | 1024 |
+| b4096 np2, k=2 | 0.394 | 0.394 | 2048 |
+| b4096 np8, k=2 | 0.390 | 0.395 | 2048 |
+| b4096 np8, k=4 | 0.390 | 0.394 | 2048 |
+
+**Explicit batching and independent requests are indistinguishable.** More precisely:
+
+- At `ub=2048` **neither** forms a combined graph. An explicit two-prompt request is
+  still capped at 1024-bucket work — the ceiling binds regardless of how the work is
+  submitted, so this is not a scheduling decision the server is getting wrong.
+- At `ub=4096` **both** form combined graphs and reach identical throughput
+  (0.394 vs 0.394 at np2).
+
+This is the brief's CASE 2/3 boundary, and it resolves cleanly: once the ubatch
+ceiling permits combination, `llama-server`'s continuous batching already forms the
+batch that an explicit multi-prompt request would. **There is no scheduling work to
+recover here.** The residual +1–3% for the explicit form is one HTTP round trip and
+one result assembly, not better batching.
