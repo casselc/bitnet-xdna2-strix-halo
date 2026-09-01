@@ -1,0 +1,48 @@
+[
+  {
+    "phase": "train",
+    "model": "Qwen/Qwen3-0.6B",
+    "dtype": "bfloat16",
+    "device": "cuda",
+    "torch": "2.10.0+rocm7.0",
+    "hip": "7.0.51831",
+    "gpu": "Radeon 8060S Graphics",
+    "load_s": 1.4,
+    "trainable_params": 4587520,
+    "total_params": 600637440,
+    "trainable_pct": 0.7638,
+    "steps": 60,
+    "loss_first": 5.277,
+    "loss_last": 0.0402,
+    "loss_drop_pct": 99.24,
+    "step_ms_median": 192.3,
+    "tokens_per_s": 2819.2,
+    "tokens_per_batch": 542,
+    "train_s": 11.9,
+    "peak_mem_mib": 3874.7,
+    "ckpt_bytes": 18386290,
+    "ckpt_write_s": 0.37,
+    "watts": 100.5
+  },
+  {
+    "phase": "verify",
+    "model": "Qwen/Qwen3-0.6B",
+    "dtype": "bfloat16",
+    "device": "cuda",
+    "torch": "2.10.0+rocm7.0",
+    "hip": "7.0.51831",
+    "gpu": "Radeon 8060S Graphics",
+    "load_s": 1.2,
+    "reload_s": 0.09,
+    "loss_after_reload": 0.0325,
+    "resumed_losses": [
+      0.0325,
+      2.5606,
+      1.1419,
+      1.3416,
+      0.3842
+    ],
+    "trainable_after_reload": 4587520,
+    "peak_mem_mib": 3849.2
+  }
+]

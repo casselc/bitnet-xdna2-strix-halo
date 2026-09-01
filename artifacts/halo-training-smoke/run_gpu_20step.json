@@ -1,0 +1,27 @@
+[
+  {
+    "phase": "train",
+    "model": "Qwen/Qwen3-0.6B",
+    "dtype": "bfloat16",
+    "device": "cuda",
+    "torch": "2.10.0+rocm7.0",
+    "hip": "7.0.51831",
+    "gpu": "Radeon 8060S Graphics",
+    "load_s": 1.3,
+    "trainable_params": 4587520,
+    "total_params": 600637440,
+    "trainable_pct": 0.7638,
+    "steps": 20,
+    "loss_first": 5.277,
+    "loss_last": 0.7156,
+    "loss_drop_pct": 86.44,
+    "step_ms_median": 191.9,
+    "tokens_per_s": 2824.9,
+    "tokens_per_batch": 542,
+    "train_s": 4.8,
+    "peak_mem_mib": 3874.7,
+    "ckpt_bytes": 18386290,
+    "ckpt_write_s": 0.36,
+    "watts": 86.5
+  }
+]

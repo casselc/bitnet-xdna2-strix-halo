@@ -157,3 +157,120 @@ system-level change):
 2. try a PyTorch nightly built against ROCm 7.1+;
 3. confirm against AMD's documented Strix Halo support matrix for kernel 7.0 / KFD
    generation 3.
+
+---
+
+# CORRECTION — the blocker is resolved. HALO LOCAL TRAINING READY.
+
+Everything above stands as provenance and is **not** rewritten. The verdict it reached
+(`BLOCKED`) was correct for the environment as it existed at the time, and the
+diagnosis was right: the faulting component was the **bundled** `libhsa-runtime64.so`.
+Acting on unblock step 1 fixed it exactly as predicted.
+
+## What changed [MEASURED]
+
+System ROCm 7.1 was installed from the Ubuntu archive (no third-party repo):
+
+```
+rocminfo             7.1.1-0ubuntu1
+libhsa-runtime64-1   7.1.0+dfsg-0ubuntu9
+libamdhip64-7        7.1.0-0ubuntu2
+librocblas5          7.1.0-1ubuntu4
+```
+
+and the wheel's bundled runtime was moved aside so torch resolves the system one:
+
+```
+torch/lib/libhsa-runtime64.so -> libhsa-runtime64.so.bundled
+```
+
+**That single rename is the whole fix.** The wheel's own `libamdhip64` was already
+working (raw `hipMalloc` succeeded); only its bundled HSA runtime faulted on kernel
+dispatch. Nothing else about the environment changed — same wheel, same venv, same
+kernel, same driver, XDNA untouched.
+
+## GPU training results [MEASURED]
+
+`sg render`, `--device cuda`, gfx1151, identical harness and dataset to the CPU runs.
+
+| | Qwen3-0.6B | Qwen3-1.7B |
+|---|---:|---:|
+| steps | 60 | 60 |
+| loss first -> last | 5.2770 -> **0.0402** | 5.5191 -> **0.0045** |
+| loss drop | 99.2% | **99.9%** |
+| LoRA trainable | 4,587,520 / 600,637,440 (0.764%) | 6,422,528 / 1,726,997,504 (0.372%) |
+| **step time (median)** | **192.3 ms** | **366.3 ms** |
+| **tokens/s** | **2819.2** | **1479.6** |
+| **peak device memory** | **3874.7 MiB** | **6646.3 MiB** |
+| package power | 100.5 W | 104.3 W |
+| adapter size / write | 17.53 MiB / 0.37 s | 24.53 MiB / 0.36 s |
+
+**GPU vs CPU on identical work:**
+
+| model | CPU step | GPU step | speedup | CPU tok/s | GPU tok/s |
+|---|---:|---:|---:|---:|---:|
+| 0.6B | 945.4 ms | 192.3 ms | **4.92x** | 573.3 | 2819.2 |
+| 1.7B | 1507.7 ms | 366.3 ms | **4.12x** | 359.5 | 1479.6 |
+
+Peak device memory is now actually reported (the CPU runs could not): **3.9 GiB at
+0.6B and 6.6 GiB at 1.7B**, against 97.7 GiB visible — so both fit with very large
+headroom, and a considerably bigger model or batch is affordable.
+
+**Checkpoint / reload / resume in a fresh process, on GPU:**
+
+```
+loss after reload : 0.0325      (trained adapter was at 0.0402)
+resumed 5 steps   : [0.0325, 2.5606, 1.1419, 1.3416, 0.3842]
+```
+
+Reload reproduces the loss. The first-resumed-step spike reproduces on GPU exactly as
+on CPU, confirming it is the **optimizer-state gap** (adapter-only saving does not
+persist AdamW moments) and not a device artefact.
+
+## T5 coexistence, now the real experiment [MEASURED]
+
+The CPU coexistence result above was a stand-in taken while the GPU path was blocked.
+Repeated with training actually on the GPU, same 8 warm domains, same controller:
+
+| arm | ctrl TTFT p50 | p95 | ctrl total p50 | req/s | W |
+|---|---:|---:|---:|---:|---:|
+| controller alone | 219.9 | 225.4 | 282.1 | 3.543 | 96.0 |
+| **controller + GPU training** | **221.4** | 263.3 | 282.5 | 3.478 | **93.6** |
+| controller alone (repeat) | 222.8 | 265.7 | 290.8 | 3.398 | 89.3 |
+
+**GPU training is essentially free for the controller: +0.7% TTFT and −1.8%
+throughput, at *lower* package power.** Against the CPU-training arm's +74% TTFT and
+−43% throughput, the contrast is decisive:
+
+| training on | ctrl TTFT | ctrl throughput | training speed |
+|---|---|---|---|
+| CPU | **+74%** | **−43%** | 1.0x |
+| GPU | **+0.7%** | **−1.8%** | **4.9x** |
+
+**Local training belongs on the GPU on this box — it is both ~5x faster and ~40x
+cheaper in controller interference.** That is not a marginal preference: CPU training
+takes nearly half the controller's capacity, GPU training takes almost none, because
+the controller is CPU/bandwidth bound (§8 of `controller-state-envelope`) and the two
+workloads land on different engines.
+
+This also completes the tri-device picture: NPU idle in warm steady state, CPU serving
+the controller, GPU free for training or the worker.
+
+## Revised verdict
+
+### HALO LOCAL TRAINING READY
+
+0.6B and 1.7B both load, train, LoRA-adapt, checkpoint, reload in a fresh process, and
+resume on the Radeon 8060S (gfx1151) through system ROCm 7.1 + `torch 2.10.0+rocm7.0`,
+at 2819 / 1480 tok/s and 3.9 / 6.6 GiB peak, coexisting with a live warm controller at
+under 2% cost.
+
+Two limitations to carry forward, neither blocking:
+
+1. **Adapter-only checkpoints do not persist optimizer state.** A real resume path must
+   save the AdamW moments; the loss spike on step 1 of resume is that gap, measured on
+   both devices.
+2. **The fix depends on shadowing the wheel's bundled HSA runtime.** A `pip install
+   --force-reinstall torch` will restore the faulting `libhsa-runtime64.so` and
+   re-break the environment. This needs to be either scripted or replaced with a
+   properly built wheel.
