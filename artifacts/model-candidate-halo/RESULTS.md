@@ -123,6 +123,30 @@ branch trained a ~20-example smoke batch of short sequences, where the GPU was
 busy only in bursts. At 98-99% sustained GPU utilisation the cost appears. The
 frozen record is not rewritten; the scope of its claim is narrowed.
 
+## Low-bit path: LFM2.5 QAD-Q4 costs nothing on this hardware
+
+LiquidAI publishes a **quantisation-aware distilled** `QAD-Q4_0` GGUF alongside
+the ordinary `Q4_0`. That is directly relevant here because QAD is an
+independent low-bit distillation route, an alternative to the ternary/BitDistill
+idea rather than a competitor to it. The hardware question is whether adopting
+it costs anything.
+
+LFM2.5-1.2B, same workload, same harness:
+
+| form | state bytes | restore p50 | TTFT p50 | decision p50 |
+|---|---:|---:|---:|---:|
+| `Q4_0` | 19,555,404 | 4.27 ms | 113.60 ms | 148.59 ms |
+| `QAD-Q4_0` | 19,555,404 | 4.48 ms | 113.49 ms | 149.11 ms |
+| delta | **0 bytes** | +0.2 ms | **−0.1%** | **+0.3%** |
+
+**Byte-identical state and indistinguishable latency.** Both are `Q4_0` with the
+same tensor shapes, so this is the expected result and it is the useful one:
+**QAD is free on this box.** Whatever it buys is behavioural, measurable only by
+the off-box eval, and there is no hardware reason not to prefer it.
+
+The LFM2.5-**2.6B** `Q4_0`/`QAD-Q4_0` pair was not downloaded, so this rests on
+the 1.2B pair alone.
+
 ## Answers to the specific questions
 
 1. **Does Qwen3.5-0.8B or 2B materially reduce warm-state RAM vs BitNet?**
@@ -147,9 +171,10 @@ frozen record is not rewritten; the scope of its claim is narrowed.
    188 ms) and on state decisively (20.2 vs 39.9 MiB). On raw decode Qwen3.5-0.8B
    is faster (99.9 vs 85.6 tok/s); LFM2.5 wins the decision because its prefill
    is cheaper, which is what this workload is made of.
-6. **Is published LFM QAD-Q4 useful here?** **Not measured.** The official
-   `QAD-Q4_0` GGUFs for both LFM2.5 sizes were downloaded and are on disk; the
-   comparison against ordinary `Q4_0` was not run. Task 10 is **incomplete**.
+6. **Is published LFM QAD-Q4 useful here?** It is **free** — byte-identical
+   state and latency within 0.3% of ordinary `Q4_0` on LFM2.5-1.2B. So there is
+   no hardware argument against adopting it, and its value is entirely a
+   behavioural question for the off-box eval. Measured on the 1.2B pair only.
 7. **Does Nemotron's Mamba-heavy structure give cheap state or decode?**
    Neither, here. 108 MiB serialized (sized by slot context, not tokens) and
    0.8 tok/s CPU decode. Its 4-attention-layer geometry *should* be cheap;
@@ -230,8 +255,8 @@ faithful, so any hybrid must beat it by enough to justify that loss.
 
 ## What was not done
 
-- **Task 10 (LFM QAD-Q4 vs ordinary Q4)** — files downloaded, comparison not
-  run.
+- **Task 10 at the 2.6B size** — the 1.2B `Q4_0`/`QAD-Q4_0` pair was compared;
+  the 2.6B pair did not download.
 - **Task 7 at the 2-4B tier** — BF16 checkpoints did not finish downloading.
 - **Concurrency c=1 vs c=2** for the top two candidates.
 - **LFM2.5-1.2B checkpoint resume** — only Qwen3.5-0.8B was resume-tested.
