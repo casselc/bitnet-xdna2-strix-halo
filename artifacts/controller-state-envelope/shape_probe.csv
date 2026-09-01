@@ -1,0 +1,77 @@
+K,M,N,build_run_s,err,geometry,natural_fits,pad_pct,padded_N,result,role,tile,tops,us
+2560,512,2560,25.2,,current-2B  (2560/6912/2560),1,0.0,2560,PASS,attn_qo,64x64x64,8.39,799.8
+2560,1024,2560,31.8,,current-2B  (2560/6912/2560),1,0.0,2560,PASS,attn_qo,64x64x64,6.63,2025.3
+2560,2048,2560,65.3,,current-2B  (2560/6912/2560),1,0.0,2560,PASS,attn_qo,64x64x64,9.02,2976.6
+2560,4096,2560,126.0,,current-2B  (2560/6912/2560),1,0.0,2560,PASS,attn_qo,64x64x64,8.97,5986.3
+2560,512,6912,3.3," = array<i64: 2, 18, 256, 48>, static_strides = array<i64: 1769472, 384, 6912, 1>}> : (memref<3538944xi32>) -> ()
+
+aiecc: edge 'npu_dma_lowered.mlir' (key 'input.mlir') failed
+aiecc: pipeline failed
+
+",current-2B  (2560/6912/2560),0,3.7,7168,FAIL,ffn_up,64x64x48,,
+2560,1024,6912,3.3," = array<i64: 2, 18, 256, 48>, static_strides = array<i64: 1769472, 384, 6912, 1>}> : (memref<7077888xi32>) -> ()
+
+aiecc: edge 'npu_dma_lowered.mlir' (key 'input.mlir') failed
+aiecc: pipeline failed
+
+",current-2B  (2560/6912/2560),0,3.7,7168,FAIL,ffn_up,64x64x48,,
+2560,2048,6912,3.3,"= array<i64: 2, 18, 256, 48>, static_strides = array<i64: 1769472, 384, 6912, 1>}> : (memref<14155776xi32>) -> ()
+
+aiecc: edge 'npu_dma_lowered.mlir' (key 'input.mlir') failed
+aiecc: pipeline failed
+
+",current-2B  (2560/6912/2560),0,3.7,7168,FAIL,ffn_up,64x64x48,,
+2560,4096,6912,3.5,"= array<i64: 2, 18, 256, 48>, static_strides = array<i64: 1769472, 384, 6912, 1>}> : (memref<28311552xi32>) -> ()
+
+aiecc: edge 'npu_dma_lowered.mlir' (key 'input.mlir') failed
+aiecc: pipeline failed
+
+",current-2B  (2560/6912/2560),0,3.7,7168,FAIL,ffn_up,64x64x48,,
+6912,512,2560,47.4,,current-2B  (2560/6912/2560),1,0.0,2560,PASS,ffn_down,64x64x64,9.13,1984.8
+6912,1024,2560,90.4,,current-2B  (2560/6912/2560),1,0.0,2560,PASS,ffn_down,64x64x64,9.43,3841.5
+6912,2048,2560,176.4,,current-2B  (2560/6912/2560),1,0.0,2560,PASS,ffn_down,64x64x64,9.34,7756.0
+6912,4096,2560,348.3,,current-2B  (2560/6912/2560),1,0.0,2560,PASS,ffn_down,64x64x64,9.65,15025.0
+1024,512,1024,6.7,,small       (1024/3072/1024),1,0.0,1024,PASS,attn_qo,64x64x64,4.76,225.4
+1024,1024,1024,8.8,,small       (1024/3072/1024),1,0.0,1024,PASS,attn_qo,64x64x64,6.34,338.8
+1024,2048,1024,13.3,,small       (1024/3072/1024),1,0.0,1024,PASS,attn_qo,64x64x64,7.42,579.2
+1024,4096,1024,21.9,,small       (1024/3072/1024),1,0.0,1024,PASS,attn_qo,64x64x64,7.87,1091.2
+1024,512,3072,11.2,,small       (1024/3072/1024),1,0.0,3072,PASS,ffn_up,64x64x64,6.38,505.3
+1024,1024,3072,17.9,,small       (1024/3072/1024),1,0.0,3072,PASS,ffn_up,64x64x64,7.53,855.6
+1024,2048,3072,31.3,,small       (1024/3072/1024),1,0.0,3072,PASS,ffn_up,64x64x64,7.78,1655.9
+1024,4096,3072,58.1,,small       (1024/3072/1024),1,0.0,3072,PASS,ffn_up,64x64x64,8.02,3214.0
+3072,512,1024,11.3,,small       (1024/3072/1024),1,0.0,1024,PASS,ffn_down,64x64x64,7.79,413.6
+3072,1024,1024,18.0,,small       (1024/3072/1024),1,0.0,1024,PASS,ffn_down,64x64x64,8.92,722.3
+3072,2048,1024,31.4,,small       (1024/3072/1024),1,0.0,1024,PASS,ffn_down,64x64x64,9.77,1318.4
+3072,4096,1024,58.8,,small       (1024/3072/1024),1,0.0,1024,PASS,ffn_down,64x64x64,9.61,2680.9
+2048,512,2048,15.2,,cand-1.7B   (2048/6144/2048),1,0.0,2048,PASS,attn_qo,64x64x64,7.59,565.6
+2048,1024,2048,25.6,,cand-1.7B   (2048/6144/2048),1,0.0,2048,PASS,attn_qo,64x64x64,8.44,1017.9
+2048,2048,2048,47.9,,cand-1.7B   (2048/6144/2048),1,0.0,2048,PASS,attn_qo,64x64x64,8.75,1964.0
+2048,4096,2048,88.7,,cand-1.7B   (2048/6144/2048),1,0.0,2048,PASS,attn_qo,64x64x64,8.95,3840.0
+2048,512,6144,3.2," = array<i64: 2, 12, 256, 64>, static_strides = array<i64: 1572864, 512, 6144, 1>}> : (memref<3145728xi32>) -> ()
+
+aiecc: edge 'npu_dma_lowered.mlir' (key 'input.mlir') failed
+aiecc: pipeline failed
+
+",cand-1.7B   (2048/6144/2048),1,0.0,6144,FAIL,ffn_up,64x64x64,,
+2048,1024,6144,3.3," = array<i64: 2, 12, 256, 64>, static_strides = array<i64: 1572864, 512, 6144, 1>}> : (memref<6291456xi32>) -> ()
+
+aiecc: edge 'npu_dma_lowered.mlir' (key 'input.mlir') failed
+aiecc: pipeline failed
+
+",cand-1.7B   (2048/6144/2048),1,0.0,6144,FAIL,ffn_up,64x64x64,,
+2048,2048,6144,3.3,"= array<i64: 2, 12, 256, 64>, static_strides = array<i64: 1572864, 512, 6144, 1>}> : (memref<12582912xi32>) -> ()
+
+aiecc: edge 'npu_dma_lowered.mlir' (key 'input.mlir') failed
+aiecc: pipeline failed
+
+",cand-1.7B   (2048/6144/2048),1,0.0,6144,FAIL,ffn_up,64x64x64,,
+2048,4096,6144,3.4,"= array<i64: 2, 12, 256, 64>, static_strides = array<i64: 1572864, 512, 6144, 1>}> : (memref<25165824xi32>) -> ()
+
+aiecc: edge 'npu_dma_lowered.mlir' (key 'input.mlir') failed
+aiecc: pipeline failed
+
+",cand-1.7B   (2048/6144/2048),1,0.0,6144,FAIL,ffn_up,64x64x64,,
+6144,512,2048,63.9,,cand-1.7B   (2048/6144/2048),1,0.0,2048,PASS,ffn_down,64x64x64,8.95,1440.2
+6144,1024,2048,123.5,,cand-1.7B   (2048/6144/2048),1,0.0,2048,PASS,ffn_down,64x64x64,9.26,2781.5
+6144,2048,2048,239.7,,cand-1.7B   (2048/6144/2048),1,0.0,2048,PASS,ffn_down,64x64x64,9.55,5397.5
+6144,4096,2048,480.8,,cand-1.7B   (2048/6144/2048),1,0.0,2048,PASS,ffn_down,64x64x64,9.69,10639.1

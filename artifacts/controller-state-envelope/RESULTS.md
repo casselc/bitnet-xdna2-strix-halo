@@ -504,3 +504,89 @@ stronger verdicts overstate the evidence:
 **Admission needs two rules, not one:** bound the resident working set by the predicted
 capacity, and bound the arrival rate near half of closed-loop capacity. Neither alone
 is sufficient.
+
+---
+
+# Appendix — P4 candidate-shape feasibility probe [MEASURED]
+
+Run after the primary tasks, on request. `tools/shape_probe.py`. Bounded strictly: it
+asks only whether a differently-sized controller's linear layers would run better or
+worse on XDNA2 than BitNet-2B's. **No new backend work was required** — the stock IRON
+`whole_array` example already takes `-M/-K/-N` and tile sizes, so arbitrary INT8 shapes
+are evaluable with existing tooling. (The *runtime's* `plan_for` is restricted to
+`K,N ∈ {2560, 6912}`, but that is a dispatch constraint, not a build one.)
+
+Tile `64x64x64`, 8 columns, int8 -> int32, legality enforced up front
+(`N % (n*cols)`, `K % k`, `M % m`, `M/(m*rows)` even, L1 <= 32 KiB).
+
+| geometry | role | K | N | M=512 | M=1024 | M=2048 | M=4096 |
+|---|---|---:|---:|---:|---:|---:|---:|
+| current-2B (2560/6912/2560) | attn q,o | 2560 | 2560 | 8.39 | 6.63 | 9.02 | 8.97 |
+| current-2B | ffn up/gate | 2560 | 6912 | **FAIL** | **FAIL** | **FAIL** | **FAIL** |
+| current-2B | ffn down | 6912 | 2560 | 9.13 | 9.43 | 9.34 | 9.65 |
+| small (1024/3072/1024) | attn q,o | 1024 | 1024 | 4.76 | 6.34 | 7.42 | 7.87 |
+| small | ffn up/gate | 1024 | 3072 | 6.38 | 7.53 | 7.78 | 8.02 |
+| small | ffn down | 3072 | 1024 | 7.79 | 8.92 | 9.77 | 9.61 |
+| cand-1.7B (2048/6144/2048) | attn q,o | 2048 | 2048 | 7.59 | 8.44 | 8.75 | 8.95 |
+| cand-1.7B | ffn up/gate | 2048 | 6144 | **FAIL** | **FAIL** | **FAIL** | **FAIL** |
+| cand-1.7B | ffn down | 6144 | 2048 | 8.95 | 9.26 | 9.55 | 9.69 |
+
+(TOPS = 2·M·K·N / device time, i.e. int8 MACs counted as two ops.)
+
+| geometry | mean TOPS | best | at M>=2048 | buildable |
+|---|---:|---:|---:|---:|
+| current-2B (2560/6912/2560) | 8.82 | 9.65 | **9.25** | 8/12 |
+| small (1024/3072/1024) | 7.68 | 9.77 | 8.41 | **12/12** |
+| cand-1.7B (2048/6144/2048) | 8.90 | 9.69 | **9.23** | 8/12 |
+
+### 1. No candidate geometry is materially better [MEASURED]
+
+At the sizes that matter (`M >= 2048`), the 1.7B candidate and the current 2B geometry
+are **indistinguishable — 9.23 vs 9.25 TOPS**. The small 1024-wide geometry is
+**worse**, not better: 8.41 TOPS, and only 4.76 at `M=512`, because a 1024x1024 matmul
+is too small to fill 32 cores. **Shrinking the model does not buy NPU efficiency.**
+
+### 2. `N <= 4096` is a hard single-kernel limit, and it is not model-specific [MEASURED]
+
+Both `N=6912` and `N=6144` fail to build, identically, at every M and every legal tile.
+The error is the DMA descriptor stride:
+
+```
+N=6912: static_strides = [1769472, 384, 6912, 1]
+N=6144: static_strides = [1572864, 512, 6144, 1]
+aiecc: edge 'npu_dma_lowered.mlir' failed
+```
+
+The outer stride is `256 x N` against the `aie.dma_bd` range `[1, 1048576]`, so
+**any N above 4096 is unbuildable as one kernel** regardless of geometry. This is a
+property of the hardware/toolchain, not of BitNet — the current runtime already works
+around it by serving `N=6912` as chunks. **A 1.7B candidate with a 6144-wide FFN would
+inherit exactly the same constraint and exactly the same workaround.**
+
+### 3. Efficiency is set by M, not by model width [MEASURED]
+
+Every geometry improves monotonically with M (small: 4.76 -> 7.87; cand-1.7B:
+7.59 -> 8.95), and all three converge to ~9–9.7 TOPS once M >= 2048. The device wants
+large token batches far more than it wants a particular hidden size.
+
+### 4. An anomaly, reported rather than smoothed [MEASURED]
+
+`current-2B attn_qo` at `M=1024` reads **6.63 TOPS**, below both its M=512 (8.39) and
+M=2048 (9.02) neighbours. A standalone run earlier in the session measured 8.93 TOPS
+for the same shape, so this was re-measured three times: **6.64 / 7.16 / 6.67** — the
+dip is reproducible and the single earlier 8.93 reading is the outlier.
+
+The dip lands exactly on `kMTile = 1024`, the runtime's production coordinate, which is
+suggestive — but the runtime uses tile `128x64x64` and this probe used `64x64x64`, so
+the result does **not** transfer to the shipped kernel and no claim is made about it.
+It is recorded as a lead for a future tiling pass, not a finding.
+
+### Conclusion
+
+**Changing the controller's hidden geometry is not a lever for NPU throughput.** A
+1.7B-shaped model performs the same as the current 2B one, a smaller one performs
+worse, and the FFN-width constraint is identical across all of them. Combined with §9
+— a warm controller engages the NPU **0%** of the time — geometry choice for the
+controller specialist should be driven by quality, memory and CPU decode speed, not by
+XDNA2 characteristics. [DEFERRED: no new AOT artifacts were built; a different geometry
+would need them, and that is the follow-on work this probe exists to scope.]
