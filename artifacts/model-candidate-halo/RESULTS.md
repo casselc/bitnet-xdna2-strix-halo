@@ -51,7 +51,7 @@ afford.
 | **LFM2.5-1.2B-Instruct** | candidate | **GOOD HALO FIT** | fastest decision (164 ms), smallest state (20.2 MiB), fastest training; restore corrupted by a prior foreign domain |
 | **Qwen3.5-0.8B** | candidate | **GOOD HALO FIT** | 188 ms decision, exact resume, bit-exact restore on a clean slot, apache-2.0; 18.6 MiB fixed state floor |
 | **BitNet-b1.58-2B-4T** | incumbent | **WORKABLE / reference** | the ONLY faithful state restore, and automatic server-side reuse; costs 127 MiB/domain |
-| Qwen3.5-2B | candidate | **WORKABLE** | byte-identical state to 0.8B but 1.86x slower per decision — dominated on hardware alone |
+| Qwen3.5-2B | candidate | **WORKABLE** | byte-identical state to 0.8B but 1.86x slower per decision and 0.69x its training throughput — dominated on hardware alone |
 | LFM2.5-2.6B | candidate | **WORKABLE** | 4.6x residency, but never bit-exact on restore and 2.1x slower than its 1.2B sibling |
 | Qwen3-0.6B / 1.7B | current controls | **POOR HALO FIT** | 112 KiB/token — *worse* warm state than the incumbent; small parameter count buys nothing |
 | Nemotron-3-Nano-4B | candidate | **RUNTIME SUPPORT BLOCKED** | 0.8 tok/s CPU decode (50-100x slower than every peer) |
@@ -102,11 +102,19 @@ coverage (~0.94-0.96% trainable in both).
 |---|---:|---:|---:|---:|---:|---:|---|
 | **LFM2.5-1.2B** | **1703.8** | **1637.1** | **1347.7** | **7.0 GiB** | **13.9 GiB** | 11.1 M | ✅ **bit-exact** |
 | Qwen3.5-0.8B | 1090.2 | 1014.3 | 717.7 | 11.7 GiB | 22.2 GiB | 7.3 M | ✅ **bit-exact** |
+| Qwen3.5-2B | 754.7 | 704.2 | 572.5 | 14.9 GiB | 26.5 GiB | 12.1 M | not run |
 
 LFM2.5-1.2B trains 1.56-1.88x faster than Qwen3.5-0.8B while being a 1.6x larger
 model, and needs 1.6x less memory — 6 of 16 blocks carry attention, the rest are
-linear-cost short-conv. Throughput peaks at **seq 512** for both. Power is flat
-at 95-112 W; nothing is power-limited.
+linear-cost short-conv. It is **2.2-2.4x faster than Qwen3.5-2B** at every
+length. Throughput peaks at **seq 512** for all three. Power is flat at
+94-112 W; nothing is power-limited.
+
+Within the Qwen3.5 family the scaling is measured, not assumed: 0.76B -> 1.89B
+is 2.49x the parameters for **0.69x the throughput** and only 1.27x the memory,
+because a 248,320-token vocabulary makes logits and activations dominate. Memory
+never binds — the heaviest arm measured is 26.5 GiB of ~97.6 — so the local
+ceiling for iterative work is set by throughput at **~2-4B**.
 
 Checkpoint resume: **both** candidates reproduce their continuous run to
 **0.00e+00** across all 8 steps after the process is destroyed — no
@@ -216,10 +224,11 @@ the 1.2B pair alone.
 8. **Realistic LoRA throughput?** 718-1704 tok/s across seq 512-2048 for
    0.8-1.2B models at ~4096 tokens/update — not the 2819 tok/s the 20-example
    smoke batch suggested.
-9. **How large a model trains comfortably?** Memory is not the limit (7-22 GiB
-   of ~97.6 GiB at seq 2048); **throughput is**. ~2-4B is the practical ceiling
-   for iterative work; beyond that a 100M-token campaign runs into days.
-   Extrapolated from two measured points.
+9. **How large a model trains comfortably?** Memory is not the limit (7.0-26.5
+   GiB of ~97.6 GiB); **throughput is**. From three measured points, a 100M-token
+   campaign is ~17 h at LFM2.5-1.2B, ~27 h at Qwen3.5-2B, and an extrapolated
+   ~69 h at 7-8B. **~2-4B is the practical ceiling for iterative work**; larger
+   models suit short adaptation runs only.
 10. **Muse Glimmer / Qwen3.8-27B as a local architect?** Metadata recon only.
     Muse-Glimmer-30B (55.5 GiB BF16, official GGUF exists) needs a **newer
     llama.cpp than the pinned build** — `muse_glimmer` is absent from its arch
@@ -291,7 +300,6 @@ faithful, so any hybrid must beat it by enough to justify that loss.
 
 - **Task 10 at the 2.6B size** — the 1.2B `Q4_0`/`QAD-Q4_0` pair was compared;
   the 2.6B pair did not download.
-- **Task 7 at the 2-4B tier** — BF16 checkpoints did not finish downloading.
 
 - **Teacher-tier inference smoke** — recon only; no local 27-30B model was run.
 - Nemotron's state-semantics probes, abandoned after the decode measurement made

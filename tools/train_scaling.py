@@ -242,8 +242,14 @@ def main():
     targets, skipped_conv, present = resolve_targets(model, extra)
     model, trainable, total = attach_lora(model, a.lora_r, a.lora_alpha, targets)
 
+    # A local checkpoint directory is passed as an absolute path, which carries
+    # the operator's home directory into an artifact bound for a public repo.
+    # Keep the leaf, which is what identifies the weights.
+    model_id = a.model if not os.path.isabs(a.model) else os.path.basename(
+        a.model.rstrip("/"))
+
     info = {
-        "label": a.label, "model": a.model, "device": dev, "dtype": a.dtype,
+        "label": a.label, "model": model_id, "device": dev, "dtype": a.dtype,
         "torch": torch.__version__, "hip": getattr(torch.version, "hip", None),
         "gpu": torch.cuda.get_device_name(0) if dev == "cuda" else None,
         "load_s": load_s, "lora_r": a.lora_r, "lora_alpha": a.lora_alpha,

@@ -25,7 +25,13 @@ hybrid-block projections in each architecture:
 | model | LoRA targets | trainable | % of model |
 |---|---|---:|---:|
 | Qwen3.5-0.8B | `q,k,v,o_proj`, `gate,up,down_proj`, `out_proj` | 7,274,496 | 0.958% |
+| Qwen3.5-2B | `q,k,v,o_proj`, `gate,up,down_proj`, `out_proj` | 12,091,392 | 0.638% |
 | LFM2.5-1.2B | `q,k,v_proj`, `in_proj`, `out_proj`, `w1,w2,w3` | 11,108,352 | 0.940% |
+
+At a fixed rank r=16 the adapted *fraction* necessarily falls as the model
+grows, which is why Qwen3.5-2B sits at 0.638%. That is a property of fixed-rank
+LoRA, not a difference in coverage: it adapts the same eight module types as
+Qwen3.5-0.8B.
 
 1-D convolutions are **not** adapted in either (`conv1d` for Qwen3.5, `conv` for
 LFM2) — peft's Linear adapter does not apply to them. This is recorded rather
@@ -44,7 +50,16 @@ covers this architecture".
 | 1024 | 1 x 4 | 4096 | 1014.3 | 4.038 s | 11,722 MiB | — |
 | 2048 | 1 x 2 | 4096 | 717.7 | 5.707 s | 22,227 MiB | 102.3 |
 
-**LFM2.5-1.2B** (1,181,448,960 params — 1.6x larger)
+**Qwen3.5-2B** (1,893,916,480 params)
+
+| seq | microbatch x accum | tok/update | tok/s | step | peak GPU | package W |
+|---:|---|---:|---:|---:|---:|---:|
+| 256 | 1 x 16 | 4096 | 626.4 | 6.539 s | 6,608 MiB | 93.8 |
+| 512 | 1 x 8 | 4096 | **754.7** | 5.428 s | 9,323 MiB | 103.1 |
+| 1024 | 1 x 4 | 4096 | 704.2 | 5.816 s | 14,911 MiB | 106.8 |
+| 2048 | 1 x 2 | 4096 | 572.5 | 7.154 s | 26,549 MiB | 105.6 |
+
+**LFM2.5-1.2B** (1,181,448,960 params — 1.6x larger than Qwen3.5-0.8B)
 
 | seq | microbatch x accum | tok/update | tok/s | step | peak GPU | package W |
 |---:|---|---:|---:|---:|---:|---:|
@@ -74,20 +89,26 @@ covers this architecture".
 
 ### How large a model trains comfortably
 
-Extrapolating from measured peak memory against ~97.6 GiB of usable unified
-memory, at seq 1024 and this LoRA configuration:
+Three measured points at seq 1024, against ~97.6 GiB of usable unified memory:
 
-| model | measured peak @1024 | headroom |
-|---|---:|---|
-| LFM2.5-1.2B | 7.0 GiB | ~13x |
-| Qwen3.5-0.8B | 11.7 GiB | ~8x |
+| model | params | tok/s @1024 | peak @1024 | peak @2048 | headroom @1024 |
+|---|---:|---:|---:|---:|---|
+| LFM2.5-1.2B | 1.18 B | 1637.1 | 7.0 GiB | 13.9 GiB | ~14x |
+| Qwen3.5-0.8B | 0.76 B | 1014.3 | 11.7 GiB | 22.2 GiB | ~8x |
+| Qwen3.5-2B | 1.89 B | 704.2 | 14.9 GiB | 26.5 GiB | ~6.5x |
 
-Memory is not the limit at this scale — **throughput is**. At ~1000-1700 tok/s a
-1B-class LoRA campaign over 100M tokens is 16-28 hours. A 7-8B model would land
-near 200-400 tok/s by parameter scaling, making the same campaign a week. The
-practical local training ceiling on this box is therefore **~2-4B for iterative
-work**, with larger models viable only for short adaptation runs. This is an
-extrapolation from two measured points and is labelled as such.
+Within one architecture family the scaling is now measured rather than assumed:
+Qwen3.5 0.76B -> 1.89B is **2.49x the parameters for 0.69x the throughput**
+(roughly `params^-0.4`) and only **1.27x the memory**, because at a 248,320-token
+vocabulary the logits and activations dominate the LoRA weights.
+
+**Memory is not the limit — throughput is.** Even the heaviest arm measured
+(Qwen3.5-2B at seq 2048) uses 26.5 GiB of ~97.6. Extrapolating the measured
+exponent, a 7-8B model of this family would land near **400 tok/s** at seq 1024,
+making a 100M-token campaign ~69 hours against ~27 hours for Qwen3.5-2B and ~17
+for LFM2.5-1.2B. So the practical local ceiling for **iterative** work is
+**~2-4B**, with 7-8B viable only for short adaptation runs. The 7-8B figure is
+extrapolated; everything at 0.8-2B is measured.
 
 ## Checkpoint resume: fixed, and verified against a continuous run
 
@@ -132,11 +153,13 @@ against 7.3 M, at the same 2:1 optimizer-to-adapter ratio.
 
 ## Not measured, and why
 
-- **Qwen3.5-2B, LFM2.5-2.6B, Nemotron-3-Nano-4B**: their BF16 checkpoints did
-  not finish downloading within this session (Qwen3.5-2B stalled at 12 MiB of
-  ~4.2 GiB while sharing bandwidth). The harness is architecture-agnostic and
-  resolves targets by inspection, so these are a re-run rather than new work.
-  The 2-4B tier of Task 7 is therefore **not covered**.
+- **LFM2.5-2.6B and Nemotron-3-Nano-4B**: BF16 checkpoints not downloaded. The
+  harness is architecture-agnostic and resolves targets by inspection, so these
+  are a re-run rather than new work. Qwen3.5-2B **is** covered, so the 2-4B tier
+  is represented; the LFM2.5 family is represented only at 1.2B.
+  (The `huggingface_hub` client stalled repeatedly on unauthenticated downloads;
+  a direct `curl` of the same revision ran at ~2 MiB/s and completed. Set
+  `HF_TOKEN` before relying on the python client here.)
 - **Hyperparameters and quality**: out of scope by instruction. The loss curves
   above show gradients flow; they are not evidence any of this learns well.
 - The `attn_implementation` is `eager` for all arms, so no arm benefits from a
