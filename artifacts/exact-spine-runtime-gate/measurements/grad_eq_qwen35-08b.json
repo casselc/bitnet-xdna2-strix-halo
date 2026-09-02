@@ -1,0 +1,43 @@
+{
+  "label": "qwen35-08b",
+  "model": "Qwen/Qwen3.5-0.8B",
+  "seq_len": 1024,
+  "logits_keep": 8,
+  "trainable_params": 7274496,
+  "lora_targets": [
+    "down_proj",
+    "gate_proj",
+    "k_proj",
+    "o_proj",
+    "out_proj",
+    "q_proj",
+    "up_proj",
+    "v_proj"
+  ],
+  "loss_full": 7.93714714050293,
+  "loss_restricted": 7.93714714050293,
+  "loss_delta": 0.0,
+  "gradient": {
+    "n_tensors": 228,
+    "n_elements": 7274496,
+    "missing_tensors": [],
+    "max_abs": 0.0,
+    "mean_abs": 0.0,
+    "rel_l2": 0.0,
+    "identical": true
+  },
+  "peak_mem_full_mib": 11039.8,
+  "peak_mem_restricted_mib": 8293.3,
+  "peak_mem_saved_pct": 24.88,
+  "parameters_after_one_step": {
+    "n_tensors": 228,
+    "n_elements": 7274496,
+    "missing_tensors": [],
+    "max_abs": 0.0,
+    "mean_abs": 0.0,
+    "rel_l2": 0.0,
+    "identical": true
+  },
+  "equivalent": true,
+  "verdict": "RESTRICTED LOGITS BIT-IDENTICAL (gradients and post-step parameters)"
+}

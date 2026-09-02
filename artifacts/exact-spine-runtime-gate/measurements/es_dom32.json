@@ -1,0 +1,438 @@
+{
+  "label": "qwen08-d32",
+  "model": "qwen3.5-0.8b-q4_0.gguf",
+  "domains": 32,
+  "turns": 96,
+  "ctxcp": 0,
+  "ts": "2026-09-02T02:36:13Z",
+  "tags": [
+    "753ecd83d79e1ce1",
+    "4097cce199e7be57",
+    "abb921d7e8111543",
+    "b8b89ba853fb9610",
+    "d48d2466a8898862",
+    "3175540deaa958a7",
+    "c5960d711c8614de",
+    "29ed9fc8b64fcde7",
+    "174c627848f2cddc",
+    "f35f84a7be7d9f3f",
+    "6ae6e73c9241d5ac",
+    "6d09e21e4457a7ff",
+    "8a851e9d91804b0d",
+    "33c30eb49d6ab9af",
+    "2301cf5238ece253",
+    "e7b9f0bd54a27de9",
+    "72ad8aefdc92de89",
+    "7451551f116fbbcf",
+    "c67307aed73bc13a",
+    "d3eb616f8b0943ae",
+    "f096905588c0b2c7",
+    "21c096f5723d77ba",
+    "7b0c900f063e04e6",
+    "6411969330547f22",
+    "867469fca7dfe2a6",
+    "8c4049f55cbd47f1",
+    "686583bcac407066",
+    "3932dcb002119829",
+    "e8a729c938cb3337",
+    "20ce80fed41c58ef",
+    "bcbedfca6db48fc6",
+    "2ed71f350860fbbb"
+  ],
+  "checkpoints": [
+    {
+      "file": "qwen08-d32.d0.state",
+      "n": 1622,
+      "bytes": 40172188,
+      "saved_tokens": 1622
+    },
+    {
+      "file": "qwen08-d32.d1.state",
+      "n": 1623,
+      "bytes": 40184500,
+      "saved_tokens": 1623
+    },
+    {
+      "file": "qwen08-d32.d2.state",
+      "n": 1621,
+      "bytes": 40159876,
+      "saved_tokens": 1621
+    },
+    {
+      "file": "qwen08-d32.d3.state",
+      "n": 1621,
+      "bytes": 40159876,
+      "saved_tokens": 1621
+    },
+    {
+      "file": "qwen08-d32.d4.state",
+      "n": 1626,
+      "bytes": 40221436,
+      "saved_tokens": 1626
+    },
+    {
+      "file": "qwen08-d32.d5.state",
+      "n": 1624,
+      "bytes": 40196812,
+      "saved_tokens": 1624
+    },
+    {
+      "file": "qwen08-d32.d6.state",
+      "n": 1622,
+      "bytes": 40172188,
+      "saved_tokens": 1622
+    },
+    {
+      "file": "qwen08-d32.d7.state",
+      "n": 1621,
+      "bytes": 40159876,
+      "saved_tokens": 1621
+    },
+    {
+      "file": "qwen08-d32.d8.state",
+      "n": 1622,
+      "bytes": 40172188,
+      "saved_tokens": 1622
+    },
+    {
+      "file": "qwen08-d32.d9.state",
+      "n": 1624,
+      "bytes": 40196812,
+      "saved_tokens": 1624
+    },
+    {
+      "file": "qwen08-d32.d10.state",
+      "n": 1625,
+      "bytes": 40209124,
+      "saved_tokens": 1625
+    },
+    {
+      "file": "qwen08-d32.d11.state",
+      "n": 1625,
+      "bytes": 40209124,
+      "saved_tokens": 1625
+    },
+    {
+      "file": "qwen08-d32.d12.state",
+      "n": 1625,
+      "bytes": 40209124,
+      "saved_tokens": 1625
+    },
+    {
+      "file": "qwen08-d32.d13.state",
+      "n": 1624,
+      "bytes": 40196812,
+      "saved_tokens": 1624
+    },
+    {
+      "file": "qwen08-d32.d14.state",
+      "n": 1622,
+      "bytes": 40172188,
+      "saved_tokens": 1622
+    },
+    {
+      "file": "qwen08-d32.d15.state",
+      "n": 1622,
+      "bytes": 40172188,
+      "saved_tokens": 1622
+    },
+    {
+      "file": "qwen08-d32.d16.state",
+      "n": 1621,
+      "bytes": 40159876,
+      "saved_tokens": 1621
+    },
+    {
+      "file": "qwen08-d32.d17.state",
+      "n": 1624,
+      "bytes": 40196812,
+      "saved_tokens": 1624
+    },
+    {
+      "file": "qwen08-d32.d18.state",
+      "n": 1620,
+      "bytes": 40147564,
+      "saved_tokens": 1620
+    },
+    {
+      "file": "qwen08-d32.d19.state",
+      "n": 1623,
+      "bytes": 40184500,
+      "saved_tokens": 1623
+    },
+    {
+      "file": "qwen08-d32.d20.state",
+      "n": 1625,
+      "bytes": 40209124,
+      "saved_tokens": 1625
+    },
+    {
+      "file": "qwen08-d32.d21.state",
+      "n": 1622,
+      "bytes": 40172188,
+      "saved_tokens": 1622
+    },
+    {
+      "file": "qwen08-d32.d22.state",
+      "n": 1625,
+      "bytes": 40209124,
+      "saved_tokens": 1625
+    },
+    {
+      "file": "qwen08-d32.d23.state",
+      "n": 1625,
+      "bytes": 40209124,
+      "saved_tokens": 1625
+    },
+    {
+      "file": "qwen08-d32.d24.state",
+      "n": 1624,
+      "bytes": 40196812,
+      "saved_tokens": 1624
+    },
+    {
+      "file": "qwen08-d32.d25.state",
+      "n": 1623,
+      "bytes": 40184500,
+      "saved_tokens": 1623
+    },
+    {
+      "file": "qwen08-d32.d26.state",
+      "n": 1624,
+      "bytes": 40196812,
+      "saved_tokens": 1624
+    },
+    {
+      "file": "qwen08-d32.d27.state",
+      "n": 1623,
+      "bytes": 40184500,
+      "saved_tokens": 1623
+    },
+    {
+      "file": "qwen08-d32.d28.state",
+      "n": 1622,
+      "bytes": 40172188,
+      "saved_tokens": 1622
+    },
+    {
+      "file": "qwen08-d32.d29.state",
+      "n": 1622,
+      "bytes": 40172188,
+      "saved_tokens": 1622
+    },
+    {
+      "file": "qwen08-d32.d30.state",
+      "n": 1620,
+      "bytes": 40147564,
+      "saved_tokens": 1620
+    },
+    {
+      "file": "qwen08-d32.d31.state",
+      "n": 1622,
+      "bytes": 40172188,
+      "saved_tokens": 1622
+    }
+  ],
+  "rows": [
+    {
+      "turn": 0,
+      "domain": 0,
+      "restore_ms": 6.78,
+      "cache_n": 1622,
+      "prompt_n": 139,
+      "ttft_ms": 131.301,
+      "total_ms": 177.11499999999998,
+      "verify": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "top1_same": true,
+        "content_same": true
+      }
+    },
+    {
+      "turn": 1,
+      "domain": 1,
+      "restore_ms": 6.47,
+      "cache_n": 1623,
+      "prompt_n": 140,
+      "ttft_ms": 132.073,
+      "total_ms": 177.132
+    },
+    {
+      "turn": 2,
+      "domain": 2,
+      "restore_ms": 5.89,
+      "cache_n": 1621,
+      "prompt_n": 139,
+      "ttft_ms": 133.019,
+      "total_ms": 177.116
+    },
+    {
+      "turn": 3,
+      "domain": 3,
+      "restore_ms": 5.38,
+      "cache_n": 1621,
+      "prompt_n": 136,
+      "ttft_ms": 124.163,
+      "total_ms": 167.53
+    },
+    {
+      "turn": 4,
+      "domain": 4,
+      "restore_ms": 5.41,
+      "cache_n": 1626,
+      "prompt_n": 142,
+      "ttft_ms": 136.69,
+      "total_ms": 181.372
+    },
+    {
+      "turn": 5,
+      "domain": 5,
+      "restore_ms": 5.39,
+      "cache_n": 1624,
+      "prompt_n": 136,
+      "ttft_ms": 124.178,
+      "total_ms": 168.74099999999999
+    },
+    {
+      "turn": 6,
+      "domain": 6,
+      "restore_ms": 5.53,
+      "cache_n": 1622,
+      "prompt_n": 138,
+      "ttft_ms": 130.287,
+      "total_ms": 174.606
+    },
+    {
+      "turn": 7,
+      "domain": 7,
+      "restore_ms": 4.71,
+      "cache_n": 1621,
+      "prompt_n": 136,
+      "ttft_ms": 123.293,
+      "total_ms": 167.053
+    },
+    {
+      "turn": 8,
+      "domain": 8,
+      "restore_ms": 4.61,
+      "cache_n": 1622,
+      "prompt_n": 139,
+      "ttft_ms": 130.777,
+      "total_ms": 174.726
+    },
+    {
+      "turn": 9,
+      "domain": 9,
+      "restore_ms": 4.34,
+      "cache_n": 1624,
+      "prompt_n": 138,
+      "ttft_ms": 130.282,
+      "total_ms": 174.281
+    },
+    {
+      "turn": 10,
+      "domain": 10,
+      "restore_ms": 4.27,
+      "cache_n": 1625,
+      "prompt_n": 135,
+      "ttft_ms": 128.761,
+      "total_ms": 172.905
+    },
+    {
+      "turn": 11,
+      "domain": 11,
+      "restore_ms": 4.27,
+      "cache_n": 1625,
+      "prompt_n": 139,
+      "ttft_ms": 132.188,
+      "total_ms": 176.565
+    },
+    {
+      "turn": 12,
+      "domain": 12,
+      "restore_ms": 4.41,
+      "cache_n": 1625,
+      "prompt_n": 139,
+      "ttft_ms": 130.689,
+      "total_ms": 175.38
+    },
+    {
+      "turn": 13,
+      "domain": 13,
+      "restore_ms": 4.24,
+      "cache_n": 1624,
+      "prompt_n": 137,
+      "ttft_ms": 130.964,
+      "total_ms": 174.79399999999998
+    },
+    {
+      "turn": 14,
+      "domain": 14,
+      "restore_ms": 4.4,
+      "cache_n": 1622,
+      "prompt_n": 136,
+      "ttft_ms": 123.543,
+      "total_ms": 167.72500000000002
+    },
+    {
+      "turn": 15,
+      "domain": 15,
+      "restore_ms": 4.21,
+      "cache_n": 1622,
+      "prompt_n": 138,
+      "ttft_ms": 130.469,
+      "total_ms": 175.143
+    },
+    {
+      "turn": 16,
+      "domain": 16,
+      "restore_ms": 4.31,
+      "cache_n": 1621,
+      "prompt_n": 134,
+      "ttft_ms": 131.319,
+      "total_ms": 175.82999999999998
+    },
+    {
+      "turn": 17,
+      "domain": 17,
+      "restore_ms": 4.23,
+      "cache_n": 1624,
+      "prompt_n": 139,
+      "ttft_ms": 131.801,
+      "total_ms": 176.27599999999998
+    },
+    {
+      "turn": 18,
+      "domain": 18,
+      "restore_ms": 4.52,
+      "cache_n": 1620,
+      "prompt_n": 137,
+      "ttft_ms": 130.874,
+      "total_ms": 174.498
+    },
+    {
+      "turn": 19,
+      "domain": 19,
+      "restore_ms": 4.71,
+      "cache_n": 1623,
+      "prompt_n": 135,
+      "ttft_ms": 128.555,
+      "total_ms": 172.78900000000002
+    }
+  ],
+  "summary": {
+    "turns": 96,
+    "reuse_min": 1620,
+    "reuse_max": 1626,
+    "ttft_p50": 130.751,
+    "ttft_p95": 134.612,
+    "restore_ms_p50": 4.5,
+    "verified_turns": 3,
+    "numerical_mismatches": 0,
+    "contaminated_turns": 0
+  },
+  "mismatches": [],
+  "contamination": [],
+  "verdict": "STABLE ACROSS ALTERNATING DOMAINS"
+}

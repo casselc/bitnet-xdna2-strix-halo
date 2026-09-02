@@ -116,7 +116,7 @@ def masked_loss(model, ids, labels, logits_to_keep=0):
 
 
 def run_arm(model, dev, data, seq_len, micro, accum, steps, warmup, lr,
-            logits_keep, label=""):
+            logits_keep, label="", sup_per_example=1.0):
     import torch
     opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=lr)
     model.train()
@@ -158,8 +158,17 @@ def run_arm(model, dev, data, seq_len, micro, accum, steps, warmup, lr,
             f, b, l = one_update(warmup + i)
             times.append(time.time() - t0); fwds.append(f); bwds.append(b); losses.append(l)
     med = sorted(times)[len(times) // 2]
+    # Task 12: input tokens/s alone hides the dataset size that actually matters.
+    # With 1-4 supervised tokens per example, a "100M input token" campaign is a
+    # very different amount of labelled data depending on sequence length, so
+    # examples/s and supervised-action-tokens/s are reported alongside.
+    examples_per_update = micro * accum
     return {"seq_len": seq_len, "microbatch": micro, "grad_accum": accum,
             "tokens_per_update": tokens_per_update, "logits_to_keep": logits_keep,
+            "examples_per_update": examples_per_update,
+            "examples_per_s": round(examples_per_update / med, 2),
+            "supervised_tokens_per_example": round(sup_per_example, 2),
+            "action_tokens_per_s": round(examples_per_update * sup_per_example / med, 1),
             "steps_timed": steps, "step_s_median": round(med, 4),
             "tokens_per_s": round(tokens_per_update / med, 1),
             "fwd_s_median": round(sorted(fwds)[len(fwds) // 2], 4),
@@ -277,12 +286,13 @@ def main():
             accum = max(1, int(round(a.token_budget / (mb * sl))))
             try:
                 r = run_arm(model, dev, data, sl, mb, accum, a.steps, a.warmup,
-                            a.lr, keep, a.label)
+                            a.lr, keep, a.label,
+                            shape["supervised_tokens_mean"])
                 info["arms"].append(r)
                 print(f"[{a.label}] seq={sl:<5} mb={mb:<2} ga={accum:<3} "
-                      f"tok/upd={r['tokens_per_update']:<6} {r['tokens_per_s']:>8} tok/s  "
-                      f"step {r['step_s_median']:.3f}s  fwd {r['fwd_s_median']:.3f} "
-                      f"bwd {r['bwd_s_median']:.3f}  peak {r['peak_mem_mib']} MiB  "
+                      f"{r['tokens_per_s']:>8} tok/s  {r['examples_per_s']:>6} ex/s  "
+                      f"{r['action_tokens_per_s']:>6} act-tok/s  "
+                      f"step {r['step_s_median']:.3f}s  peak {r['peak_mem_mib']} MiB  "
                       f"{r['watts']} W", flush=True)
             except Exception as e:
                 info["arms"].append({"seq_len": sl, "microbatch": mb,
