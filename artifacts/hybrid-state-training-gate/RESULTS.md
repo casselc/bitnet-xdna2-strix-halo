@@ -87,11 +87,19 @@ throughput. Peak memory is 3-4x lower at mb 1-2.
 arm**, by 3.2% to 12.8%, worst on the model with fewest attention layers.
 `eager` remains both the controlled and the practical choice here.
 
-**9. Measured Qwen3.5-4B and LFM2.5-2.6B rates?** **Not measured.** Qwen3.5-4B
-weights were still downloading when this pass closed; LFM2.5-2.6B was not
-fetched in HF format. Qwen3.5-2B (798.6 tok/s at seq 1024, 11.6 GiB peak) is the
-largest measured point, so the 2-4B tier has one real measurement rather than
-none, but the 4B corner is still extrapolated.
+**9. Measured Qwen3.5-4B and LFM2.5-2.6B rates?** **Qwen3.5-4B: measured** —
+**426.1 tok/s at seq 512** (17.6 GiB peak) and **368.5 at seq 1024** (26.8 GiB),
+23.79 M trainable of 4.23 B. **LFM2.5-2.6B: not measured** (not fetched in HF
+format), so the LFM2.5 family still rests on its 1.2B point alone.
+
+The 4B measurement **corrects the earlier extrapolation**. Three real Qwen3.5
+points (0.76 / 1.89 / 4.23 B) do not lie on a single power law: an endpoint fit
+of `params^-0.645` misses the 2B midpoint by −22.5%. So the previous "~400 tok/s
+at 7-8B" was optimistic and the honest figure is ~255 tok/s with wide error
+bars. In campaign terms for 100M tokens at seq 1024: LFM2.5-1.2B **15.7 h**,
+Qwen3.5-0.8B 24.9 h, Qwen3.5-2B 34.8 h, Qwen3.5-4B **75.4 h**. Memory never
+binds (26.8 of ~97.6 GiB at the heaviest arm) — the ceiling is throughput
+alone.
 
 **10. At equal ~127 MiB/domain, how much more context?** **~6x.**
 LFM2.5-1.2B holds **9,587** spine tokens at 112.66 MiB and Qwen3.5-0.8B **9,014**
@@ -132,6 +140,7 @@ Behavioural quality remains **unresolved** and is not addressed here.
 | **LFM2.5-1.2B** | **Best hybrid on every hardware axis, gated on one upstream bug.** Smallest state (20.2 MiB/domain), ~6x more context at equal budget, fastest training (1791/1771 tok/s) in the least memory. Currently 1176 ms/decision because reuse is broken. |
 | **Qwen3.5-0.8B** | Same gate, slightly behind: 39.9 MiB/domain, 5.6x context, 1289/1114 tok/s, Apache-2.0. Its 18.6 MiB fixed DeltaNet floor is why it holds less context than LFM2.5 despite equal per-token cost. |
 | Qwen3.5-2B | Dominated on hardware by its 0.8B sibling — identical state, ~1.8x the decision latency, 0.72x the training throughput. Retained only because quality may separate them. |
+| Qwen3.5-4B | Trainable locally (368.5 tok/s at seq 1024, 26.8 GiB) but a 100M-token campaign is 3.1 days, against 15.7 h for LFM2.5-1.2B. Viable for occasional runs, not for iteration. |
 | Nemotron-3-Nano-4B | Excluded — 0.8 tok/s CPU decode. |
 
 **The decisive question is no longer which model, it is whether the runtime is
@@ -152,7 +161,7 @@ losing here, or the reverse.
 
 Also outstanding:
 
-- **Qwen3.5-4B and LFM2.5-2.6B** controller-SFT (Task 10) — not measured.
+- **LFM2.5-2.6B** controller-SFT (Task 10) — not measured; Qwen3.5-4B was.
 - **Coexistence under the corrected objective** (Task 16) — not re-run; the
   prior +48% figure was measured under the full-sequence objective at mb1, and
   the corrected objective at mb1-2 has a similar memory and utilisation profile,

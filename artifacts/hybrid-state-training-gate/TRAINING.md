@@ -123,7 +123,48 @@ Best measured controller-SFT throughput, at each model's optimal micro-batch:
 |---|---:|---:|
 | **LFM2.5-1.2B** | **1791.1** tok/s | **1771.1** tok/s |
 | Qwen3.5-0.8B | 1289.1 | 1114.4 |
-| Qwen3.5-2B | — | 798.6 |
+| Qwen3.5-2B | 800.4 | 798.6 |
+| Qwen3.5-4B | 426.1 | 368.5 |
+
+## The 2-4B tier, measured rather than extrapolated (Task 10)
+
+`model-candidate-halo` extrapolated a ~2-4B local ceiling from two points.
+Qwen3.5-4B is now measured, which makes the whole Qwen3.5 family a real curve at
+micro-batch 1:
+
+| model | params | seq 512 | peak | seq 1024 | peak | trainable |
+|---|---:|---:|---:|---:|---:|---:|
+| Qwen3.5-0.8B | 0.760 B | 1151.5 | 4.9 GiB | 1114.4 | 8.3 GiB | 7.27 M (0.958%) |
+| Qwen3.5-2B | 1.894 B | 800.4 | 7.6 GiB | 798.6 | 11.6 GiB | 12.09 M (0.638%) |
+| Qwen3.5-4B | 4.230 B | 426.1 | 17.6 GiB | 368.5 | 26.8 GiB | 23.79 M (0.563%) |
+
+**The three points do not lie on a single power law**, so the earlier
+extrapolation should not be trusted at face value. A fit through the endpoints
+gives `params^-0.645`, which reproduces 0.8B and 4B exactly by construction but
+misses the 2B midpoint by **−22.5%** — Qwen3.5-2B is materially faster than a
+smooth curve predicts. The honest statement is therefore the measured table, plus
+a *rough* bound: at 7-8B the same fit suggests ~255 tok/s, and given the midpoint
+error that figure could easily be 20-30% off in either direction.
+
+What the measurement does settle, in campaign terms for 100M tokens at seq 1024:
+
+| model | tok/s | 100M-token campaign |
+|---|---:|---:|
+| LFM2.5-1.2B | 1771.1 | **15.7 h** |
+| Qwen3.5-0.8B | 1114.4 | 24.9 h |
+| Qwen3.5-2B | 798.6 | 34.8 h |
+| Qwen3.5-4B | 368.5 | **75.4 h** (3.1 days) |
+| ~7-8B (extrapolated, weak) | ~255 | ~109 h (4.6 days) |
+
+**Memory still never binds** — the heaviest arm measured, Qwen3.5-4B at seq 1024,
+peaks at 26.8 GiB of ~97.6 available. The ceiling is entirely throughput. So the
+practical reading tightens: **~2B is the comfortable ceiling for iterative work**
+(a campaign inside a working day and a half), **4B is viable for occasional
+runs** at three days, and the earlier branch's "~2-4B" was the right range but
+its 4B end is slower than its extrapolation implied.
+
+LFM2.5-2.6B was not fetched in HF format, so the LFM2.5 family still has only its
+1.2B point; whether it scales as favourably as it leads at 1.2B is untested.
 
 ## LoRA coverage — stated, not implied (Task 11)
 
