@@ -1,0 +1,93 @@
+{
+  "label": "qwen35-08b",
+  "model": "qwen3.5-0.8b-q4_0.gguf",
+  "spine_tokens": 1625,
+  "delta_tokens": 139,
+  "ctxcp": 0,
+  "ts": "2026-09-02T00:45:40Z",
+  "reference": {
+    "cache_n": 0,
+    "prompt_n": 1761,
+    "ttft_ms": 1735.702,
+    "decision": " HOLD\n\n<think>\n\n</think>\n\nACTION:"
+  },
+  "arms": [
+    {
+      "ubatch": 4096,
+      "turn1_cache_n": 0,
+      "turn1_ttft_ms": 1741.367,
+      "turn2_cache_n": 0,
+      "turn2_ttft_ms": 1684.127,
+      "turn2_total_ms": 1684.128,
+      "max_abs_dlogprob": 0.0,
+      "next_token_same": true,
+      "decision": " HOLD\n\n<think>\n\n</think>\n\nACTION:",
+      "decision_same": true,
+      "checkpoints_created": 0,
+      "reuse_fraction": 0.0,
+      "correct": true
+    },
+    {
+      "ubatch": 1024,
+      "turn1_cache_n": 0,
+      "turn1_ttft_ms": 1707.917,
+      "turn2_cache_n": 0,
+      "turn2_ttft_ms": 1673.366,
+      "turn2_total_ms": 1673.367,
+      "max_abs_dlogprob": 0.0,
+      "next_token_same": true,
+      "decision": " HOLD\n\n<think>\n\n</think>\n\nACTION:",
+      "decision_same": true,
+      "checkpoints_created": 0,
+      "reuse_fraction": 0.0,
+      "correct": true
+    },
+    {
+      "ubatch": 512,
+      "turn1_cache_n": 0,
+      "turn1_ttft_ms": 1664.576,
+      "turn2_cache_n": 0,
+      "turn2_ttft_ms": 1639.12,
+      "turn2_total_ms": 1639.1209999999999,
+      "max_abs_dlogprob": 0.0,
+      "next_token_same": true,
+      "decision": " HOLD\n\n<think>\n\n</think>\n\nACTION:",
+      "decision_same": true,
+      "checkpoints_created": 0,
+      "reuse_fraction": 0.0,
+      "correct": true
+    },
+    {
+      "ubatch": 256,
+      "turn1_cache_n": 0,
+      "turn1_ttft_ms": 1556.438,
+      "turn2_cache_n": 0,
+      "turn2_ttft_ms": 1517.155,
+      "turn2_total_ms": 1517.156,
+      "max_abs_dlogprob": 0.0,
+      "next_token_same": true,
+      "decision": " HOLD\n\n<think>\n\n</think>\n\nACTION:",
+      "decision_same": true,
+      "checkpoints_created": 0,
+      "reuse_fraction": 0.0,
+      "correct": true
+    },
+    {
+      "ubatch": 128,
+      "turn1_cache_n": 0,
+      "turn1_ttft_ms": 1449.329,
+      "turn2_cache_n": 0,
+      "turn2_ttft_ms": 1433.705,
+      "turn2_total_ms": 1433.706,
+      "max_abs_dlogprob": 0.0,
+      "next_token_same": true,
+      "decision": " HOLD\n\n<think>\n\n</think>\n\nACTION:",
+      "decision_same": true,
+      "checkpoints_created": 0,
+      "reuse_fraction": 0.0,
+      "correct": true
+    }
+  ],
+  "best_correct_reuse": null,
+  "verdict": "NO UBATCH SETTING GIVES BOTH REUSE AND CORRECTNESS"
+}

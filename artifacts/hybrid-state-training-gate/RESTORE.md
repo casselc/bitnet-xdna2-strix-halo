@@ -181,3 +181,110 @@ tools/restore_matrix.py --port <p> --label <name> \
     --save-dir <dir> --out <json>
 # boundary assertion + clean / foreign / clean-after-foreign restore arms
 ```
+
+---
+
+# 6. Reuse and correctness are mutually exclusive for hybrids here [MEASURED]
+
+Task 4 asked whether persisting `slot.prompt.checkpoints` — the upstream fix for
+#28194 — would make hybrid restore both correct and fast. The author's patch is
+**not publicly available** (no llama.cpp fork on their account, no PR
+referencing the issue, and they state they are not opening one), so rather than
+reimplement ~750 lines this pass asks the question the patch would answer using
+only stock server behaviour.
+
+## The minimal discriminator
+
+A checkpoint only needs persisting if it works in the first place. So drop
+save/restore and exercise the same code path in-process:
+
+    turn 1:  A_prefix + delta_1      (populates the slot)
+    turn 2:  A_prefix + delta_2      (shares the 1575-token prefix)
+
+Turn 2 is the situation a restored slot would be in if checkpoints had survived.
+
+| model | turn-2 cache_n @ `-ctxcp 0` | @ `-ctxcp 32` |
+|---|---:|---:|
+| BitNet-b1.58-2B | 1614 | 1614 |
+| LFM2.5-1.2B | **0** | **0** at `-ub 4096` |
+| Qwen3.5-0.8B | **0** | **0** at `-ub 4096` |
+
+The incumbent reuses identically with checkpoints on or off — **checkpoints are
+not what gates its reuse.** The hybrids reuse nothing at the project's standard
+`-ub 4096`, with or without checkpoints.
+
+## `-ub` is the lever, and it is not free
+
+Hybrid reuse is gated by `pos_min >= pos_min_thold` (`server-context.cpp:3252`),
+where `pos_min` is the earliest position the memory can still represent. For
+recurrent memory that is bounded by the last micro-batch boundary, so a smaller
+`-ub` leaves a nearer roll-back point. It works — and it is wrong.
+
+**LFM2.5-1.2B**, two turns, versus a `-ctxcp 0` full-recompute reference:
+
+| `-ub` | `-ctxcp 0` cache_n / max\|Δ\| | `-ctxcp 32` cache_n / TTFT / max\|Δ\| |
+|---:|---|---|
+| 4096 | 0 / **0.00000** | 0 / 1186 ms / 0.30757 |
+| 1024 | 0 / **0.00000** | 683 / 738 ms / 0.29952 |
+| 512 | 0 / **0.00000** | 1195 / 385 ms / 0.29491 |
+| 256 | 0 / **0.00000** | 1451 / **207 ms** / 0.33977 |
+| 128 | 0 / 0.24348 | 1579 / **118 ms** / **0.48868** |
+
+**Qwen3.5-0.8B**, same protocol:
+
+| `-ub` | `-ctxcp 0` cache_n / max\|Δ\| | `-ctxcp 32` cache_n / TTFT / max\|Δ\| |
+|---:|---|---|
+| 4096 | 0 / **0.00000** | 0 / 1711 ms / 0.11125 |
+| 1024 | 0 / **0.00000** | 730 / 1008 ms / 0.16998 |
+| 512 | 0 / **0.00000** | 1242 / 516 ms / 0.12822 |
+| 256 | 0 / **0.00000** | 1498 / 259 ms / 0.15820 |
+| 128 | 0 / **0.00000** | 1626 / **143 ms** / 0.15424 |
+
+Read the two columns together:
+
+- **`-ctxcp 0`: correct and useless.** Exactly 0.00000 at every micro-batch from
+  4096 down to 256, and zero reuse in all of them. The self-consistency across
+  four micro-batch sizes is what establishes this column as the trustworthy
+  reference. (`-ub 128` on LFM2.5 diverges at 0.243 even here, so that setting is
+  independently excluded on numerical grounds.)
+- **`-ctxcp 32`: fast and wrong.** Reuse climbs to 97-100% of the spine and TTFT
+  falls to 118-143 ms — genuinely competitive with the incumbent's ~207 ms — but
+  **every single arm is numerically wrong, including the `-ub 4096` arm that
+  reuses nothing.** That last cell is the tell: the divergence is not caused by
+  reuse, it is caused by checkpointing being enabled at all, and reuse then adds
+  to it (LFM2.5: 0.308 with no reuse, 0.489 at 97% reuse).
+
+## Verdict for Task 4
+
+> **HYBRID PREFIX REUSE AND NUMERICAL CORRECTNESS ARE MUTUALLY EXCLUSIVE IN THIS
+> RUNTIME.** Reuse requires context checkpoints; context checkpoints perturb
+> hybrid state. There is no `-ub` / `-ctxcp` combination that delivers both.
+
+This **narrows the upstream issue's implied remedy**, and the distinction
+matters to anyone picking up that patch:
+
+- #28194 is correct that restore does not persist `prompt.checkpoints`, and that
+  hybrid reuse needs them. Reproduced here exactly (`cache_n = 0` after restore,
+  full reuse on a pure-attention model).
+- But persisting them would make hybrid restore **fast and still wrong on this
+  build**, because the checkpoint mechanism itself does not preserve hybrid state
+  faithfully. A correct fix has to address `create_checkpoint`'s partial-state
+  capture for recurrent memory, not only its serialisation.
+
+The pure-attention incumbent is unaffected throughout: it reuses without
+checkpoints, and its restore is bit-exact.
+
+## What this means for the model bakeoff
+
+For any hybrid candidate on the pinned build, the honest warm-decision numbers
+are the **correct** ones — `-ctxcp 0`, no reuse, a full re-prefill every turn:
+
+| model | correct warm TTFT | incumbent |
+|---|---:|---:|
+| LFM2.5-1.2B | 1170-1186 ms | **206-214 ms** |
+| Qwen3.5-0.8B | 1684-1711 ms | |
+| Qwen3.5-2B | 2970-2988 ms | |
+
+The 118-143 ms figures are reachable only by accepting a state the model did not
+compute. They are recorded here as the size of the prize if the runtime is
+fixed, **not** as a current capability.

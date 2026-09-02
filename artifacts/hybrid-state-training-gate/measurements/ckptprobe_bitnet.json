@@ -1,0 +1,30 @@
+{
+  "label": "bitnet",
+  "model": "ggml-model-i2_s.gguf",
+  "spine_tokens": 1600,
+  "delta_tokens": 146,
+  "ts": "2026-09-02T00:42:19Z",
+  "reference_ctxcp0_fullrecompute": {
+    "content": " ",
+    "cache_n": 0,
+    "prompt_n": 1747,
+    "ttft_ms": 1687.392
+  },
+  "ctxcp0_two_turn": {
+    "turn2_cache_n": 1614,
+    "turn2_ttft_ms": 206.542,
+    "turn2_max_dlogprob": 0.0,
+    "turn2_content_same": true
+  },
+  "ctxcp32_two_turn": {
+    "turn1_cache_n": 0,
+    "turn1_ttft_ms": 1678.81,
+    "turn2_cache_n": 1614,
+    "turn2_ttft_ms": 207.191,
+    "turn2_max_dlogprob": 0.0,
+    "turn2_content_same": true
+  },
+  "in_process_checkpoint_reuse": true,
+  "in_process_checkpoint_correct": true,
+  "verdict": "PERSISTING CHECKPOINTS WOULD FIX RESTORE \u2014 the mechanism gives correct reuse in-process; only serialisation is missing"
+}

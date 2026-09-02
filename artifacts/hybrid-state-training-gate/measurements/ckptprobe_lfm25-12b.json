@@ -1,0 +1,30 @@
+{
+  "label": "lfm25-12b",
+  "model": "lfm2.5-1.2b-q4km.gguf",
+  "spine_tokens": 1575,
+  "delta_tokens": 135,
+  "ts": "2026-09-02T00:42:28Z",
+  "reference_ctxcp0_fullrecompute": {
+    "content": " R",
+    "cache_n": 0,
+    "prompt_n": 1712,
+    "ttft_ms": 1227.569
+  },
+  "ctxcp0_two_turn": {
+    "turn2_cache_n": 0,
+    "turn2_ttft_ms": 1173.874,
+    "turn2_max_dlogprob": 0.0,
+    "turn2_content_same": true
+  },
+  "ctxcp32_two_turn": {
+    "turn1_cache_n": 0,
+    "turn1_ttft_ms": 1248.151,
+    "turn2_cache_n": 0,
+    "turn2_ttft_ms": 1186.465,
+    "turn2_max_dlogprob": 0.3075714111328125,
+    "turn2_content_same": true
+  },
+  "in_process_checkpoint_reuse": false,
+  "in_process_checkpoint_correct": false,
+  "verdict": "CHECKPOINTS DO NOT GATE REUSE HERE \u2014 no in-process reuse either, so the issue's diagnosis does not fully transfer to this build"
+}
