@@ -23,7 +23,7 @@
      }
  };
 --- a/tools/server/server-context.cpp	2026-08-30 00:36:21.587487547 -0700
-+++ b/tools/server/server-context.cpp	2026-09-01 19:21:34.868503437 -0700
++++ b/tools/server/server-context.cpp	2026-09-01 19:49:52.791515179 -0700
 @@ -265,6 +265,7 @@
          }
  
@@ -32,7 +32,61 @@
      }
  
      std::vector<common_adapter_lora_info> lora;
-@@ -2616,6 +2617,13 @@
+@@ -2343,8 +2344,33 @@
+         return true;
+     }
+ 
++    // [SAMIZDAT_CKPT_PROBE] Fingerprint a sequence's LIVE state, to answer
++    // directly whether checkpoint capture mutates it rather than inferring it
++    // from downstream logit differences.
++    static uint64_t seq_state_fingerprint(llama_context * ctx, llama_seq_id id, size_t & n_out) {
++        const size_t n = llama_state_seq_get_size(ctx, id);
++        std::vector<uint8_t> buf(n);
++        const size_t got = llama_state_seq_get_data(ctx, buf.data(), n, id);
++        n_out = got;
++        uint64_t h = 1469598103934665603ULL;          // FNV-1a
++        for (size_t i = 0; i < got; ++i) {
++            h ^= (uint64_t) buf[i];
++            h *= 1099511628211ULL;
++        }
++        return h;
++    }
++
+     // n_tokens_cur: the number of tokens added to the batch for the current slot
+     void create_checkpoint(server_slot & slot, const int64_t n_tokens_cur, llama_pos pos_min, llama_pos pos_max) {
++        // [SAMIZDAT_CKPT_PROBE] enabled by SAMIZDAT_CKPT_PROBE=1 so normal runs
++        // pay nothing. Hashes TWICE before the capture: if those two disagree the
++        // observation itself is unstable and nothing after it can be trusted.
++        const bool probe = getenv("SAMIZDAT_CKPT_PROBE") != nullptr;
++        uint64_t h_a = 0, h_b = 0; size_t n_a = 0, n_b = 0;
++        if (probe) {
++            h_a = seq_state_fingerprint(ctx_tgt, slot.id, n_a);
++            h_b = seq_state_fingerprint(ctx_tgt, slot.id, n_b);
++        }
+         while (slot.prompt.checkpoints.size() >= (size_t) params_base.n_ctx_checkpoints) {
+             // make room for the new checkpoint, if needed
+             const auto & cur = slot.prompt.checkpoints.front();
+@@ -2371,6 +2397,19 @@
+                 "created context checkpoint %d of %d (pos_min = %d, pos_max = %d, n_tokens = %" PRId64 ", size = %.3f MiB)\n",
+                 (int) slot.prompt.checkpoints.size(), params_base.n_ctx_checkpoints, cur.pos_min,
+                 cur.pos_max, cur.n_tokens, (float) cur.size() / 1024 / 1024);
++
++        if (probe) {
++            size_t n_c = 0;
++            const uint64_t h_c = seq_state_fingerprint(ctx_tgt, slot.id, n_c);
++            SLT_INF(slot,
++                    "[SAMIZDAT_CKPT_PROBE] before=%016llx/%zu before2=%016llx/%zu after=%016llx/%zu "
++                    "observation_stable=%s capture_mutated_live_state=%s\n",
++                    (unsigned long long) h_a, n_a,
++                    (unsigned long long) h_b, n_b,
++                    (unsigned long long) h_c, n_c,
++                    (h_a == h_b) ? "yes" : "NO",
++                    (h_b != h_c) ? "YES" : "no");
++        }
+     }
+ 
+     void process_single_task(server_task && task) {
+@@ -2616,6 +2655,13 @@
                      slot->prompt.tokens.clear();
                      slot->prompt.tokens.insert(tokens);
  
@@ -46,7 +100,7 @@
                      const int64_t t_end = ggml_time_us();
                      const double t_restore_ms = (t_end - t_start) / 1000.0;
  
-@@ -3250,7 +3258,37 @@
+@@ -3250,7 +3296,37 @@
                              // the largest pos_min required for a checkpoint to be useful
                              const auto pos_min_thold = std::max(0, pos_next - n_swa - (has_new_tokens ? 0 : 1));
  

@@ -151,3 +151,61 @@ tools/exact_spine_probe.py --bin <llama-server> --model <gguf> \
 tools/exact_spine_alternating.py --bin <llama-server> --model <gguf> \
     --domains 4 --turns 100 --verify-every 10 --label X --out X.json
 ```
+
+
+---
+
+# 7. Does `create_checkpoint` mutate live state? Measured: no [MEASURED]
+
+Task 8. The previous branch inferred that checkpoint *capture* perturbs hybrid
+state, from downstream logit differences, and labelled the mechanism "consistent
+with" rather than demonstrated. It is now measured directly and **the inference
+was wrong**.
+
+`create_checkpoint` was instrumented in the isolated worktree to fingerprint the
+LIVE sequence state (FNV-1a over `llama_state_seq_get_data`) immediately before
+and immediately after the capture, with no token decoded in between. It hashes
+**twice** before the capture as a control: if those two disagree, the
+observation itself is unstable and nothing after it could be trusted.
+
+Run with `-ctxcp 32 -cms 0 -ub 512` so mid-prompt checkpoints are genuinely
+created:
+
+| model | before | before again | after | observation stable | capture mutated |
+|---|---|---|---|---|---|
+| LFM2.5-1.2B | `f03df646…` / 13,522,072 B | `f03df646…` | `f03df646…` | yes | **no** |
+| LFM2.5-1.2B | `fd32b4df…` / 19,819,672 B | `fd32b4df…` | `fd32b4df…` | yes | **no** |
+| Qwen3.5-0.8B | `19a8392a…` / 33,556,276 B | `19a8392a…` | `19a8392a…` | yes | **no** |
+| Qwen3.5-0.8B | `7a82b39c…` / 39,857,972 B | `7a82b39c…` | `7a82b39c…` | yes | **no** |
+
+> **CHECKPOINT CAPTURE DOES NOT MUTATE LIVE STATE.** Byte-identical before and
+> after, on both hybrid families, with the observation verified stable.
+
+So the `-ctxcp` sensitivity recorded on the previous branch has a different
+cause. Taken together with §3 — where LFM2.5 diverges under **split evaluation
+alone, with no checkpoints and no save/restore** — the coherent reading is that
+the divergence belongs to **chunked evaluation**, and enabling checkpoints
+changes how the prefill is chunked rather than corrupting anything at capture
+time. That is stated as the reading the two measurements jointly support, not as
+a demonstrated mechanism; isolating which kernel loses reproducibility across a
+batch boundary was out of scope.
+
+(BitNet created no checkpoints in this run and therefore contributes no rows.)
+
+# 8. Memory cost of the working reuse path (Task 9)
+
+For the **exact-spine** path, which is the one that works:
+
+| | |
+|---|---|
+| per domain | **one state file, 38.31 MiB** (Qwen3.5-0.8B at a ~1625-token spine) |
+| sidecar | none |
+| checkpoint blobs | none |
+| metadata | none beyond the file |
+| 32 domains, measured | **1.2 GB** on disk |
+
+Nothing is added beyond the sequence state itself, so the sequence-state density
+measured on the previous branch carries over to this path unchanged. A generic
+context-checkpoint approach would add one or more additional state blobs per
+domain on top of this; that arm was not built (see below), so its cost is not
+quantified here.

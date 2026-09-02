@@ -1,0 +1,46 @@
+{
+  "note": "Task 8: does create_checkpoint mutate the live sequence state?",
+  "method": "FNV-1a over llama_state_seq_get_data of the live sequence, hashed twice before capture (stability control) and once after, inside create_checkpoint, gated on SAMIZDAT_CKPT_PROBE",
+  "config": "-ctxcp 32 -cms 0 -ub 512 so mid-prompt checkpoints are actually created",
+  "results": [
+    {
+      "model": "lfm2.5-1.2b-q4km",
+      "before": "f03df64601a4b8cc",
+      "before2": "f03df64601a4b8cc",
+      "after": "f03df64601a4b8cc",
+      "bytes": 13522072,
+      "observation_stable": true,
+      "capture_mutated": false
+    },
+    {
+      "model": "lfm2.5-1.2b-q4km",
+      "before": "fd32b4df647ffe27",
+      "before2": "fd32b4df647ffe27",
+      "after": "fd32b4df647ffe27",
+      "bytes": 19819672,
+      "observation_stable": true,
+      "capture_mutated": false
+    },
+    {
+      "model": "qwen3.5-0.8b-q4_0",
+      "before": "19a8392a6a0d090b",
+      "before2": "19a8392a6a0d090b",
+      "after": "19a8392a6a0d090b",
+      "bytes": 33556276,
+      "observation_stable": true,
+      "capture_mutated": false
+    },
+    {
+      "model": "qwen3.5-0.8b-q4_0",
+      "before": "7a82b39c03b401b6",
+      "before2": "7a82b39c03b401b6",
+      "after": "7a82b39c03b401b6",
+      "bytes": 39857972,
+      "observation_stable": true,
+      "capture_mutated": false
+    }
+  ],
+  "verdict": "CHECKPOINT CAPTURE DOES NOT MUTATE LIVE STATE",
+  "implication": "the ctxcp-on divergence measured on hybrid-state-training-gate is NOT caused by capture; combined with the split-evaluation finding it is most consistent with enabling checkpoints changing how the prefill is chunked",
+  "bitnet_note": "no checkpoints were created for BitNet in this run, so it contributes no probe lines"
+}
