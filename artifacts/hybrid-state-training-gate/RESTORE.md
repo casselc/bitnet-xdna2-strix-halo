@@ -288,3 +288,33 @@ are the **correct** ones — `-ctxcp 0`, no reuse, a full re-prefill every turn:
 The 118-143 ms figures are reachable only by accepting a state the model did not
 compute. They are recorded here as the size of the prize if the runtime is
 fixed, **not** as a current capability.
+
+---
+
+# 7. Equal-memory long spine (Task 13) [MEASURED]
+
+If a hybrid's per-token state is 3-6x smaller, that gain can be spent on more
+domains **or** on a longer spine per domain. At the incumbent's ~127 MiB/domain
+budget:
+
+| model | longest spine within 127.18 MiB | state | vs incumbent | cold decision at that length |
+|---|---:|---:|---:|---:|
+| BitNet-b1.58-2B | **1,600** tok | 117.29 MiB | 1.0x | 1,680.6 ms |
+| Qwen3.5-0.8B | **9,014** tok | 125.11 MiB | **5.6x** | 10,239.4 ms |
+| **LFM2.5-1.2B** | **9,587** tok | 112.66 MiB | **6.0x** | 8,938.0 ms |
+
+Sweep detail (LFM2.5-1.2B): 1,575 tok / 18.65 MiB, 3,188 / 37.58, 6,414 / 75.43,
+9,587 / 112.66, 11,009 / 129.35 (first over budget). The incumbent crosses the
+budget between 1,600 tok (117.29 MiB) and 3,224 tok (236.26 MiB).
+
+**The capacity answer is real and large: at the same per-domain RAM, a hybrid
+controller can hold roughly 6x more resident context.** That is the strongest
+architectural argument for the hybrid family in this whole bakeoff.
+
+**The latency answer is currently prohibitive, and that is the reuse blocker
+again, not the architecture.** Because hybrid prefix reuse is either absent or
+wrong (§2, §6), every decision at a 9.6K-token spine is a full prefill costing
+~8.9 s. The capacity is usable only once warm reuse works; until then a longer
+spine makes each decision proportionally more expensive rather than free.
+
+No semantic claim is made — this is capacity and latency only.

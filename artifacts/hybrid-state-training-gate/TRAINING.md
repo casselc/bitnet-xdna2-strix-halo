@@ -141,3 +141,27 @@ Attention and MLP projections inside those blocks *are* adapted, so the blocks
 are not untouched — but **this is not architecture-wide adaptation**, and no
 claim here should be read as evidence that LoRA reaches the recurrent path. A
 conv-capable adapter was not written in this pass, by instruction.
+
+## Attention backend: SDPA is slower here (Task 9)
+
+The superseded pass used `attn_implementation="eager"` for controlled fairness.
+That arm is kept. The practical alternative on this stack is PyTorch SDPA; no
+FlashAttention build work was done, by instruction.
+
+| model | seq | EAGER CONTROLLED | SDPA PRACTICAL | change |
+|---|---:|---:|---:|---:|
+| Qwen3.5-0.8B (mb2) | 512 | **1291.3** | 1250.3 | −3.2% |
+| Qwen3.5-0.8B (mb2) | 1024 | **1005.0** | 958.4 | −4.6% |
+| LFM2.5-1.2B (mb1) | 512 | **1796.6** | 1652.0 | −8.0% |
+| LFM2.5-1.2B (mb1) | 1024 | **1768.4** | 1542.7 | −12.8% |
+
+**SDPA is slower on every arm**, and worst on the model with the fewest
+attention layers. That is consistent with SDPA's dispatch overhead not being
+repaid when only 6 of 16 (LFM2.5) or 6 of 24 (Qwen3.5) blocks are attention at
+all, and with these sequence lengths being short enough that the kernel has
+little to win. It is a measurement on this ROCm/gfx1151 stack, not a general
+claim about SDPA.
+
+**The practical-training estimate therefore uses `eager`**, which is also the
+controlled arm — so for this workload the two coincide and no separate
+"practical" number is needed.

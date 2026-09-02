@@ -1,0 +1,91 @@
+{
+  "label": "lfm25-12b",
+  "budget_mib": 127.18,
+  "ts": "2026-09-02T01:05:18Z",
+  "arms": [
+    {
+      "spine_target": 1600,
+      "spine_tokens": 1575,
+      "delta_tokens": 135,
+      "total_tokens": 1710,
+      "state_bytes": 19555380,
+      "state_mib": 18.65,
+      "bytes_per_spine_token": 12416.1,
+      "spine_prefill_ms": 1156.0,
+      "decision_ttft_ms": 1170.9,
+      "decision_total_ms": 1220.7,
+      "decision_wall_ms": 1222.3,
+      "within_budget": true
+    },
+    {
+      "spine_target": 3200,
+      "spine_tokens": 3188,
+      "delta_tokens": 135,
+      "total_tokens": 3323,
+      "state_bytes": 39401732,
+      "state_mib": 37.58,
+      "bytes_per_spine_token": 12359.4,
+      "spine_prefill_ms": 2406.1,
+      "decision_ttft_ms": 2478.7,
+      "decision_total_ms": 2530.5,
+      "decision_wall_ms": 2532.6,
+      "within_budget": true
+    },
+    {
+      "spine_target": 6400,
+      "spine_tokens": 6414,
+      "delta_tokens": 135,
+      "total_tokens": 6549,
+      "state_bytes": 79094436,
+      "state_mib": 75.43,
+      "bytes_per_spine_token": 12331.5,
+      "spine_prefill_ms": 5253.6,
+      "decision_ttft_ms": 5378.2,
+      "decision_total_ms": 5437.1,
+      "decision_wall_ms": 5439.6,
+      "within_budget": true
+    },
+    {
+      "spine_target": 9600,
+      "spine_tokens": 9587,
+      "delta_tokens": 135,
+      "total_tokens": 9722,
+      "state_bytes": 118135028,
+      "state_mib": 112.66,
+      "bytes_per_spine_token": 12322.4,
+      "spine_prefill_ms": 8726.3,
+      "decision_ttft_ms": 8872.1,
+      "decision_total_ms": 8938.0,
+      "decision_wall_ms": 8940.9,
+      "within_budget": true
+    },
+    {
+      "spine_target": 11000,
+      "spine_tokens": 11009,
+      "delta_tokens": 135,
+      "total_tokens": 11144,
+      "state_bytes": 135631316,
+      "state_mib": 129.35,
+      "bytes_per_spine_token": 12320.0,
+      "spine_prefill_ms": 10485.2,
+      "decision_ttft_ms": 10704.3,
+      "decision_total_ms": 10775.2,
+      "decision_wall_ms": 10778.4,
+      "within_budget": false
+    }
+  ],
+  "longest_spine_within_budget": {
+    "spine_target": 9600,
+    "spine_tokens": 9587,
+    "delta_tokens": 135,
+    "total_tokens": 9722,
+    "state_bytes": 118135028,
+    "state_mib": 112.66,
+    "bytes_per_spine_token": 12322.4,
+    "spine_prefill_ms": 8726.3,
+    "decision_ttft_ms": 8872.1,
+    "decision_total_ms": 8938.0,
+    "decision_wall_ms": 8940.9,
+    "within_budget": true
+  }
+}

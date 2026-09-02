@@ -1,0 +1,93 @@
+{
+  "label": "lfm25-12b-eager",
+  "model": "LiquidAI/LFM2.5-1.2B-Instruct",
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "attn_implementation": "eager",
+  "torch": "2.10.0+rocm7.0",
+  "hip": "7.0.51831",
+  "gpu": "Radeon 8060S Graphics",
+  "load_s": 2.2,
+  "lora_r": 16,
+  "lora_targets": [
+    "in_proj",
+    "k_proj",
+    "out_proj",
+    "q_proj",
+    "v_proj",
+    "w1",
+    "w2",
+    "w3"
+  ],
+  "conv_modules_not_adapted": [
+    "conv"
+  ],
+  "n_conv1d_modules": 10,
+  "linear_module_names_present": [
+    "in_proj",
+    "k_proj",
+    "lm_head",
+    "out_proj",
+    "q_proj",
+    "v_proj",
+    "w1",
+    "w2",
+    "w3"
+  ],
+  "trainable_params": 11108352,
+  "total_params": 1181448960,
+  "trainable_pct": 0.9402,
+  "objective": "controller-SFT: loss on action completion only",
+  "token_budget_per_update": 4096,
+  "ts": "2026-09-02T01:03:13Z",
+  "arms": [
+    {
+      "seq_len": 512,
+      "microbatch": 1,
+      "grad_accum": 8,
+      "tokens_per_update": 4096,
+      "logits_to_keep": 8,
+      "steps_timed": 8,
+      "step_s_median": 2.2799,
+      "tokens_per_s": 1796.6,
+      "fwd_s_median": 1.1618,
+      "bwd_s_median": 1.1106,
+      "peak_mem_mib": 4024.0,
+      "watts": 103.8,
+      "loss_first": 2.8565,
+      "loss_last": 0.535
+    },
+    {
+      "seq_len": 1024,
+      "microbatch": 1,
+      "grad_accum": 4,
+      "tokens_per_update": 4096,
+      "logits_to_keep": 8,
+      "steps_timed": 8,
+      "step_s_median": 2.3163,
+      "tokens_per_s": 1768.4,
+      "fwd_s_median": 1.0546,
+      "bwd_s_median": 1.254,
+      "peak_mem_mib": 6159.0,
+      "watts": 109.1,
+      "loss_first": 0.7486,
+      "loss_last": 0.8155
+    }
+  ],
+  "corpus": {
+    "512": {
+      "prompt_tokens": 510,
+      "supervised_tokens_mean": 2.609375,
+      "supervised_tokens_min": 2,
+      "supervised_tokens_max": 4,
+      "supervised_fraction": 0.005096435546875
+    },
+    "1024": {
+      "prompt_tokens": 1022,
+      "supervised_tokens_mean": 2.609375,
+      "supervised_tokens_min": 2,
+      "supervised_tokens_max": 4,
+      "supervised_fraction": 0.0025482177734375
+    }
+  }
+}

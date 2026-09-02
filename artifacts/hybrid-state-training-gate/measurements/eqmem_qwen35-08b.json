@@ -1,0 +1,77 @@
+{
+  "label": "qwen35-08b",
+  "budget_mib": 127.18,
+  "ts": "2026-09-02T01:06:18Z",
+  "arms": [
+    {
+      "spine_target": 1600,
+      "spine_tokens": 1625,
+      "delta_tokens": 139,
+      "total_tokens": 1764,
+      "state_bytes": 40209100,
+      "state_mib": 38.35,
+      "bytes_per_spine_token": 24744.1,
+      "spine_prefill_ms": 1649.9,
+      "decision_ttft_ms": 1703.4,
+      "decision_total_ms": 1745.8,
+      "decision_wall_ms": 1747.6,
+      "within_budget": true
+    },
+    {
+      "spine_target": 3200,
+      "spine_tokens": 3186,
+      "delta_tokens": 139,
+      "total_tokens": 3325,
+      "state_bytes": 59428132,
+      "state_mib": 56.68,
+      "bytes_per_spine_token": 18652.9,
+      "spine_prefill_ms": 3196.2,
+      "decision_ttft_ms": 3336.0,
+      "decision_total_ms": 3381.7,
+      "decision_wall_ms": 3383.9,
+      "within_budget": true
+    },
+    {
+      "spine_target": 6400,
+      "spine_tokens": 6423,
+      "delta_tokens": 139,
+      "total_tokens": 6562,
+      "state_bytes": 99282076,
+      "state_mib": 94.68,
+      "bytes_per_spine_token": 15457.3,
+      "spine_prefill_ms": 6856.2,
+      "decision_ttft_ms": 6971.6,
+      "decision_total_ms": 7023.9,
+      "decision_wall_ms": 7026.9,
+      "within_budget": true
+    },
+    {
+      "spine_target": 9000,
+      "spine_tokens": 9014,
+      "delta_tokens": 139,
+      "total_tokens": 9153,
+      "state_bytes": 131182468,
+      "state_mib": 125.11,
+      "bytes_per_spine_token": 14553.2,
+      "spine_prefill_ms": 10039.2,
+      "decision_ttft_ms": 10183.7,
+      "decision_total_ms": 10239.4,
+      "decision_wall_ms": 10243.4,
+      "within_budget": true
+    }
+  ],
+  "longest_spine_within_budget": {
+    "spine_target": 9000,
+    "spine_tokens": 9014,
+    "delta_tokens": 139,
+    "total_tokens": 9153,
+    "state_bytes": 131182468,
+    "state_mib": 125.11,
+    "bytes_per_spine_token": 14553.2,
+    "spine_prefill_ms": 10039.2,
+    "decision_ttft_ms": 10183.7,
+    "decision_total_ms": 10239.4,
+    "decision_wall_ms": 10243.4,
+    "within_budget": true
+  }
+}

@@ -1,0 +1,97 @@
+{
+  "label": "qwen35-08b-eager",
+  "model": "Qwen/Qwen3.5-0.8B",
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "attn_implementation": "eager",
+  "torch": "2.10.0+rocm7.0",
+  "hip": "7.0.51831",
+  "gpu": "Radeon 8060S Graphics",
+  "load_s": 2.6,
+  "lora_r": 16,
+  "lora_targets": [
+    "down_proj",
+    "gate_proj",
+    "k_proj",
+    "o_proj",
+    "out_proj",
+    "q_proj",
+    "up_proj",
+    "v_proj"
+  ],
+  "conv_modules_not_adapted": [
+    "conv1d"
+  ],
+  "n_conv1d_modules": 18,
+  "linear_module_names_present": [
+    "down_proj",
+    "gate_proj",
+    "in_proj_a",
+    "in_proj_b",
+    "in_proj_qkv",
+    "in_proj_z",
+    "k_proj",
+    "lm_head",
+    "o_proj",
+    "out_proj",
+    "q_proj",
+    "up_proj",
+    "v_proj"
+  ],
+  "trainable_params": 7274496,
+  "total_params": 759667520,
+  "trainable_pct": 0.9576,
+  "objective": "controller-SFT: loss on action completion only",
+  "token_budget_per_update": 4096,
+  "ts": "2026-09-02T01:00:30Z",
+  "arms": [
+    {
+      "seq_len": 512,
+      "microbatch": 2,
+      "grad_accum": 4,
+      "tokens_per_update": 4096,
+      "logits_to_keep": 8,
+      "steps_timed": 8,
+      "step_s_median": 3.172,
+      "tokens_per_s": 1291.3,
+      "fwd_s_median": 0.9922,
+      "bwd_s_median": 2.1615,
+      "peak_mem_mib": 8248.0,
+      "watts": 106.5,
+      "loss_first": 2.7163,
+      "loss_last": 1.4781
+    },
+    {
+      "seq_len": 1024,
+      "microbatch": 2,
+      "grad_accum": 2,
+      "tokens_per_update": 4096,
+      "logits_to_keep": 8,
+      "steps_timed": 8,
+      "step_s_median": 4.0757,
+      "tokens_per_s": 1005.0,
+      "fwd_s_median": 1.0934,
+      "bwd_s_median": 2.9603,
+      "peak_mem_mib": 14927.6,
+      "watts": 104.3,
+      "loss_first": 1.8026,
+      "loss_last": 1.04
+    }
+  ],
+  "corpus": {
+    "512": {
+      "prompt_tokens": 511,
+      "supervised_tokens_mean": 1.609375,
+      "supervised_tokens_min": 1,
+      "supervised_tokens_max": 3,
+      "supervised_fraction": 0.003143310546875
+    },
+    "1024": {
+      "prompt_tokens": 1023,
+      "supervised_tokens_mean": 1.609375,
+      "supervised_tokens_min": 1,
+      "supervised_tokens_max": 3,
+      "supervised_fraction": 0.0015716552734375
+    }
+  }
+}

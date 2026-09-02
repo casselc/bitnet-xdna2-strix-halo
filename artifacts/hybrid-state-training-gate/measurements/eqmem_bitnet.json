@@ -1,0 +1,49 @@
+{
+  "label": "bitnet",
+  "budget_mib": 127.18,
+  "ts": "2026-09-02T01:05:03Z",
+  "arms": [
+    {
+      "spine_target": 1600,
+      "spine_tokens": 1600,
+      "delta_tokens": 135,
+      "total_tokens": 1735,
+      "state_bytes": 122983168,
+      "state_mib": 117.29,
+      "bytes_per_spine_token": 76864.5,
+      "spine_prefill_ms": 1532.5,
+      "decision_ttft_ms": 1615.9,
+      "decision_total_ms": 1680.6,
+      "decision_wall_ms": 1683.6,
+      "within_budget": true
+    },
+    {
+      "spine_target": 3200,
+      "spine_tokens": 3224,
+      "delta_tokens": 135,
+      "total_tokens": 3359,
+      "state_bytes": 247732352,
+      "state_mib": 236.26,
+      "bytes_per_spine_token": 76840.1,
+      "spine_prefill_ms": 3667.5,
+      "decision_ttft_ms": 3941.6,
+      "decision_total_ms": 4024.6,
+      "decision_wall_ms": 4028.1,
+      "within_budget": false
+    }
+  ],
+  "longest_spine_within_budget": {
+    "spine_target": 1600,
+    "spine_tokens": 1600,
+    "delta_tokens": 135,
+    "total_tokens": 1735,
+    "state_bytes": 122983168,
+    "state_mib": 117.29,
+    "bytes_per_spine_token": 76864.5,
+    "spine_prefill_ms": 1532.5,
+    "decision_ttft_ms": 1615.9,
+    "decision_total_ms": 1680.6,
+    "decision_wall_ms": 1683.6,
+    "within_budget": true
+  }
+}
