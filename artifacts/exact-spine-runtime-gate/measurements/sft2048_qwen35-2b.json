@@ -1,0 +1,78 @@
+{
+  "label": "qwen35-2b-2048",
+  "model": "models/hf/Qwen3.5-2B",
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "attn_implementation": "eager",
+  "torch": "2.10.0+rocm7.0",
+  "hip": "7.0.51831",
+  "gpu": "Radeon 8060S Graphics",
+  "load_s": 1.5,
+  "lora_r": 16,
+  "lora_targets": [
+    "down_proj",
+    "gate_proj",
+    "k_proj",
+    "o_proj",
+    "out_proj",
+    "q_proj",
+    "up_proj",
+    "v_proj"
+  ],
+  "conv_modules_not_adapted": [
+    "conv1d"
+  ],
+  "n_conv1d_modules": 18,
+  "linear_module_names_present": [
+    "down_proj",
+    "gate_proj",
+    "in_proj_a",
+    "in_proj_b",
+    "in_proj_qkv",
+    "in_proj_z",
+    "k_proj",
+    "lm_head",
+    "o_proj",
+    "out_proj",
+    "q_proj",
+    "up_proj",
+    "v_proj"
+  ],
+  "trainable_params": 12091392,
+  "total_params": 1893916480,
+  "trainable_pct": 0.6384,
+  "objective": "controller-SFT: loss on action completion only",
+  "token_budget_per_update": 4096,
+  "ts": "2026-09-02T02:41:41Z",
+  "arms": [
+    {
+      "seq_len": 2048,
+      "microbatch": 1,
+      "grad_accum": 2,
+      "tokens_per_update": 4096,
+      "logits_to_keep": 8,
+      "examples_per_update": 2,
+      "examples_per_s": 0.32,
+      "supervised_tokens_per_example": 1.61,
+      "action_tokens_per_s": 0.5,
+      "steps_timed": 8,
+      "step_s_median": 6.2941,
+      "tokens_per_s": 650.8,
+      "fwd_s_median": 1.9389,
+      "bwd_s_median": 4.3219,
+      "peak_mem_mib": 19851.8,
+      "watts": 102.9,
+      "loss_first": 6.2923,
+      "loss_last": 1.5465
+    }
+  ],
+  "corpus": {
+    "2048": {
+      "prompt_tokens": 2047,
+      "supervised_tokens_mean": 1.609375,
+      "supervised_tokens_min": 1,
+      "supervised_tokens_max": 3,
+      "supervised_fraction": 0.00078582763671875
+    }
+  }
+}

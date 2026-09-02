@@ -225,6 +225,11 @@ def main():
     ap.add_argument("--logits-keep", type=int, default=8)
     ap.add_argument("--no-restrict-logits", action="store_true")
     ap.add_argument("--check-logits", action="store_true")
+    ap.add_argument("--train-conv", action="store_true",
+                    help="Task 15: additionally unfreeze every nn.Conv1d parameter. "
+                         "peft's Linear adapter cannot reach the short-conv/DeltaNet "
+                         "convolution, so ordinary LoRA leaves the recurrent pathway "
+                         "frozen; this measures what including it costs.")
     ap.add_argument("--attn-impl", default="eager")
     ap.add_argument("--dtype", default="bfloat16")
     ap.add_argument("--device", default="cuda")
@@ -244,12 +249,27 @@ def main():
     # Task 11: say exactly how much of the architecture the adapter reaches.
     import torch.nn as nn
     n_conv = sum(1 for _, m in model.named_modules() if isinstance(m, nn.Conv1d))
+    conv_added = 0
+    if a.train_conv:
+        # full trainability for conv parameters only -- no custom adapter, which
+        # the pass was told not to build. Reported as an increment so the cost of
+        # reaching the recurrent pathway is separable from the LoRA baseline.
+        for mod_name, mod in model.named_modules():
+            if isinstance(mod, nn.Conv1d):
+                for pn, prm in mod.named_parameters(recurse=False):
+                    if not prm.requires_grad:
+                        prm.requires_grad_(True)
+                        conv_added += prm.numel()
+        trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     info = {"label": a.label, "model": model_id, "device": dev, "dtype": a.dtype,
             "attn_implementation": a.attn_impl,
             "torch": torch.__version__, "hip": getattr(torch.version, "hip", None),
             "gpu": torch.cuda.get_device_name(0) if dev == "cuda" else None,
             "load_s": load_s, "lora_r": a.lora_r, "lora_targets": targets,
-            "conv_modules_not_adapted": skipped, "n_conv1d_modules": n_conv,
+            "conv_modules_not_adapted": ([] if a.train_conv else skipped),
+            "n_conv1d_modules": n_conv,
+            "train_conv": bool(a.train_conv),
+            "conv_params_unfrozen": conv_added,
             "linear_module_names_present": present,
             "trainable_params": trainable, "total_params": total,
             "trainable_pct": round(100 * trainable / total, 4),
@@ -257,7 +277,9 @@ def main():
             "token_budget_per_update": a.token_budget,
             "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "arms": []}
-    print(f"[{a.label}] targets={targets} conv1d_modules={n_conv} (not adapted)", flush=True)
+    print(f"[{a.label}] targets={targets} conv1d_modules={n_conv} "
+          f"{'(UNFROZEN: +%d params)' % conv_added if a.train_conv else '(not adapted)'}",
+          flush=True)
     print(f"[{a.label}] trainable {trainable:,}/{total:,} ({info['trainable_pct']}%)", flush=True)
 
     keep = 0 if a.no_restrict_logits else a.logits_keep
