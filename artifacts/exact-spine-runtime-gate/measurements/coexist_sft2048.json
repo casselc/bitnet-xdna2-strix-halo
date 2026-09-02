@@ -1,0 +1,210 @@
+{
+  "controller_port": 8081,
+  "spine_tokens": 1600,
+  "delta_tokens": 135,
+  "train_model": "LiquidAI/LFM2.5-1.2B-Instruct",
+  "train_seq_len": 2048,
+  "ts": "2026-09-02T02:52:41Z",
+  "controller_alone": {
+    "turns": 20,
+    "errors": 0,
+    "ttft_ms": {
+      "n": 20,
+      "p50": 195.624,
+      "p95": 208.879,
+      "mean": 197.0073,
+      "min": 191.74,
+      "max": 210.826
+    },
+    "total_ms": {
+      "n": 20,
+      "p50": 257.419,
+      "p95": 273.534,
+      "mean": 257.94124999999997,
+      "min": 251.199,
+      "max": 274.658
+    },
+    "decode_tps": {
+      "n": 20,
+      "p50": 67.03423773692414,
+      "p95": 68.08858324680409,
+      "mean": 65.75061881374084,
+      "min": 59.192612761927315,
+      "max": 68.20351930159596
+    },
+    "cache_n": {
+      "n": 20,
+      "p50": 1615,
+      "p95": 1615,
+      "mean": 1614.9,
+      "min": 1614,
+      "max": 1615
+    },
+    "wall_s": 5.2,
+    "package_watts": 110.7,
+    "req_per_s": 3.833
+  },
+  "train_running_at_measure": true,
+  "controller_loaded": {
+    "turns": 20,
+    "errors": 0,
+    "ttft_ms": {
+      "n": 20,
+      "p50": 309.782,
+      "p95": 323.999,
+      "mean": 307.8069,
+      "min": 252.727,
+      "max": 329.54
+    },
+    "total_ms": {
+      "n": 20,
+      "p50": 463.53700000000003,
+      "p95": 503.522,
+      "mean": 462.25874999999996,
+      "min": 394.9,
+      "max": 506.803
+    },
+    "decode_tps": {
+      "n": 20,
+      "p50": 26.57542437630801,
+      "p95": 28.845252432015346,
+      "mean": 26.104133214131487,
+      "min": 22.015520942264295,
+      "max": 29.544061274383086
+    },
+    "cache_n": {
+      "n": 20,
+      "p50": 1615,
+      "p95": 1615,
+      "mean": 1614.9,
+      "min": 1614,
+      "max": 1615
+    },
+    "wall_s": 9.3,
+    "package_watts": 119.7,
+    "req_per_s": 2.145
+  },
+  "still_training_after": true,
+  "training_under_load": {
+    "label": "coexist-lfm-sft2048",
+    "model": "LiquidAI/LFM2.5-1.2B-Instruct",
+    "device": "cuda",
+    "dtype": "bfloat16",
+    "attn_implementation": "eager",
+    "torch": "2.10.0+rocm7.0",
+    "hip": "7.0.51831",
+    "gpu": "Radeon 8060S Graphics",
+    "load_s": 1.6,
+    "lora_r": 16,
+    "lora_targets": [
+      "in_proj",
+      "k_proj",
+      "out_proj",
+      "q_proj",
+      "v_proj",
+      "w1",
+      "w2",
+      "w3"
+    ],
+    "conv_modules_not_adapted": [
+      "conv"
+    ],
+    "n_conv1d_modules": 10,
+    "train_conv": false,
+    "conv_params_unfrozen": 0,
+    "linear_module_names_present": [
+      "in_proj",
+      "k_proj",
+      "lm_head",
+      "out_proj",
+      "q_proj",
+      "v_proj",
+      "w1",
+      "w2",
+      "w3"
+    ],
+    "trainable_params": 11108352,
+    "total_params": 1181448960,
+    "trainable_pct": 0.9402,
+    "objective": "controller-SFT: loss on action completion only",
+    "token_budget_per_update": 4096,
+    "ts": "2026-09-02T02:52:53Z",
+    "arms": [
+      {
+        "seq_len": 2048,
+        "microbatch": 1,
+        "grad_accum": 2,
+        "tokens_per_update": 4096,
+        "logits_to_keep": 8,
+        "examples_per_update": 2,
+        "examples_per_s": 0.72,
+        "supervised_tokens_per_example": 2.61,
+        "action_tokens_per_s": 1.9,
+        "steps_timed": 40,
+        "step_s_median": 2.7855,
+        "tokens_per_s": 1470.5,
+        "fwd_s_median": 1.2394,
+        "bwd_s_median": 1.538,
+        "peak_mem_mib": 12790.8,
+        "watts": 105.4,
+        "loss_first": 4.2019,
+        "loss_last": 0.5391
+      }
+    ],
+    "corpus": {
+      "2048": {
+        "prompt_tokens": 2046,
+        "supervised_tokens_mean": 2.609375,
+        "supervised_tokens_min": 2,
+        "supervised_tokens_max": 4,
+        "supervised_fraction": 0.00127410888671875
+      }
+    }
+  },
+  "controller_alone_after": {
+    "turns": 20,
+    "errors": 0,
+    "ttft_ms": {
+      "n": 20,
+      "p50": 200.292,
+      "p95": 209.798,
+      "mean": 200.2942,
+      "min": 193.279,
+      "max": 213.413
+    },
+    "total_ms": {
+      "n": 20,
+      "p50": 262.61899999999997,
+      "p95": 274.367,
+      "mean": 264.395,
+      "min": 252.661,
+      "max": 276.563
+    },
+    "decode_tps": {
+      "n": 20,
+      "p50": 63.68412673141219,
+      "p95": 67.16706127315165,
+      "mean": 62.67096149161067,
+      "min": 51.851083687649066,
+      "max": 67.3604796066148
+    },
+    "cache_n": {
+      "n": 20,
+      "p50": 1615,
+      "p95": 1615,
+      "mean": 1614.9,
+      "min": 1614,
+      "max": 1615
+    },
+    "wall_s": 5.3,
+    "package_watts": 109.6,
+    "req_per_s": 3.74
+  },
+  "delta_pct": {
+    "ttft_p50": 58.4,
+    "ttft_p95": 55.1,
+    "total_p50": 80.1,
+    "total_p95": 84.1,
+    "req_per_s": -44.0
+  }
+}

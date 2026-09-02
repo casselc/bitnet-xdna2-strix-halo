@@ -69,6 +69,8 @@ def main():
     ap.add_argument("--predict", type=int, default=4)
     ap.add_argument("--train-steps", type=int, default=40)
     ap.add_argument("--train-out", default="/tmp/halo-train/coexist_train.json")
+    ap.add_argument("--trainer", default="")
+    ap.add_argument("--microbatch", type=int, default=1)
     a = ap.parse_args()
 
     base = f"http://127.0.0.1:{a.port}"
@@ -88,10 +90,16 @@ def main():
 
     # ---- arm 2: controller while the GPU trains
     root = Path(__file__).resolve().parent.parent
+    # Supersedes the full-sequence LM workload this originally drove. The
+    # controller-SFT objective is what a real campaign runs, and it has a
+    # different memory and utilisation profile, so the earlier +48% figure
+    # cannot simply be assumed to carry over.
+    trainer = a.trainer or str(root / "tools/train_controller_sft.py")
     cmd = [str(root / "tools/halo_rocm_env.sh"), "exec",
-           str(root / ".venv-train/bin/python"), str(root / "tools/train_scaling.py"),
+           str(root / ".venv-train/bin/python"), trainer,
            "--model", a.train_model, "--label", a.train_label,
            "--out", a.train_out, "--seq-lens", str(a.seq_len),
+           "--microbatches", str(a.microbatch),
            "--steps", str(a.train_steps), "--warmup", "2"]
     env = dict(os.environ, HALO_PYTHON=str(root / ".venv-train/bin/python"))
     print(f"starting training: {a.train_model} seq={a.seq_len}", flush=True)
@@ -141,6 +149,14 @@ def main():
             res["training_under_load"] = json.load(open(a.train_out))
         except Exception:
             pass
+
+    # Task 16 asks for controller-alone AFTER as well, so a drift during the
+    # window cannot be mistaken for interference.
+    res["controller_alone_after"] = controller_arm(base, dom, dl, a.predict, a.turns,
+                                                   a.warmup, 9000)
+    aft = res["controller_alone_after"]
+    print(f"ALONE-AFTER ttft p50={aft['ttft_ms']['p50']:.1f} p95={aft['ttft_ms']['p95']:.1f} "
+          f"total p50={aft['total_ms']['p50']:.1f} {aft['package_watts']} W", flush=True)
 
     def d(k, stat="p50"):
         x, y = c[k][stat], l[k][stat]
