@@ -81,14 +81,52 @@ This does not claim it *helps*; no quality was measured. It tells the off-box
 team that including the recurrent path is a cheap option rather than a
 significant footprint change.
 
-## 4. What is not covered
+## 4. The two remaining family points (Tasks 13 and 14)
 
-- **LFM2.5-2.6B and the BitNet BF16 master** — weights were still downloading
-  when the pass closed. Both are one command each against the existing harness.
-  Note the BitNet BF16 repo's `config.json` carries an `auto_map` pointing at
-  `configuration_bitnet.py` / `modeling_bitnet.py` **which are not present in
-  the repo**, so `trust_remote_code=True` fails; transformers 5.16.1 has a
-  **native** `bitnet` implementation and loads it correctly once `auto_map` is
-  removed. That is the only obstacle found, and it is not a blocker.
-- **Corrected coexistence** (Task 16) — not re-run under the seq-2048 objective.
-  The prior +48% figure stands on the full-sequence workload it was measured on.
+Both completed. **BitNet BF16 attaches to standard PEFT with no obstacle** —
+the answer to Task 14 is the positive one:
+
+| | BitNet-b1.58-2B BF16 | LFM2.5-2.6B |
+|---|---|---|
+| adapted modules | `q,k,v,o_proj`, `gate,up,down_proj` | `q,k,v_proj`, `in_proj`, `out_proj`, `w1,w2,w3` |
+| `Conv1d` present | **0** (pure attention) | 22 (not adapted) |
+| trainable | 21,626,880 / 2.43 B (0.888%) | 24,461,312 / 2.72 B (0.899%) |
+| seq 1024 | 855.8 tok/s, 0.84 ex/s, 18.8 GiB | 889.8 tok/s, 0.87 ex/s, 12.6 GiB |
+| seq 2048 | 671.2 tok/s, 0.33 ex/s, 35.8 GiB | 784.5 tok/s, 0.38 ex/s, 22.7 GiB |
+
+**BitNet standard-LoRA support is NOT blocked.** The BF16 master exposes ordinary
+`nn.Linear` projections under conventional names, so `peft` attaches cleanly and
+no custom trainer is required. The only obstacle was packaging: the repo's
+`config.json` carries an `auto_map` pointing at `configuration_bitnet.py` /
+`modeling_bitnet.py` that are **absent from the repo**, so `trust_remote_code=True`
+fails. transformers 5.16.1 has a native `bitnet` implementation that loads
+correctly once `auto_map` is removed — a one-line fix, recorded so the next
+person does not lose time to it.
+
+### Complete seq-2048 table
+
+| model | params | input tok/s | examples/s | act-tok/s | peak | 100k decisions |
+|---|---:|---:|---:|---:|---:|---:|
+| **LFM2.5-1.2B** | 1.18 B | **1474.0** | **0.72** | 1.9 | **12.8 GiB** | **38.6 h** |
+| LFM2.5-2.6B | 2.72 B | 784.5 | 0.38 | 0.8 | 22.7 GiB | 73.1 h |
+| Qwen3.5-0.8B | 0.76 B | 816.2 | 0.40 | 0.6 | 15.6 GiB | 69.4 h |
+| BitNet-b1.58-2B | 2.43 B | 671.2 | 0.33 | 0.5 | 35.8 GiB | 84.2 h |
+| Qwen3.5-2B | 1.89 B | 650.8 | 0.32 | 0.5 | 19.9 GiB | 86.8 h |
+| Qwen3.5-4B | 4.23 B | 256.5 | 0.13 | 0.2 | 46.6 GiB | 213.7 h |
+
+Two things the larger LFM2.5 point settles:
+
+- **LFM2.5's training lead is not a small-model artifact.** At 2.72 B it still
+  beats Qwen3.5-**2B** (1.89 B) on throughput — 784.5 against 650.8 tok/s — while
+  being 1.4x the parameters. The family scales as its architecture predicts.
+- **Memory separates the incumbent sharply.** BitNet needs **35.8 GiB** at seq
+  2048 against LFM2.5-2.6B's 22.7 GiB at a *larger* parameter count, because all
+  30 of its layers carry full attention.
+
+## 5. What is not covered
+
+- **Micro-batch sweeps for the two new points** — only mb1 was run for
+  LFM2.5-2.6B and BitNet, by instruction. The mb1 optimum found elsewhere makes
+  that unlikely to be the wrong choice, but it is not measured for these two.
+- **Quality of any of it.** Every number here is throughput, memory or
+  numerical agreement. Nothing in this pass says any model decides well.

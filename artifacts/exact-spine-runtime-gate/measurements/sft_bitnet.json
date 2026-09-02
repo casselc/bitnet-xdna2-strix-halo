@@ -1,0 +1,99 @@
+{
+  "label": "bitnet-bf16",
+  "model": "bitnet-bf16",
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "attn_implementation": "eager",
+  "torch": "2.10.0+rocm7.0",
+  "hip": "7.0.51831",
+  "gpu": "Radeon 8060S Graphics",
+  "load_s": 3.2,
+  "lora_r": 16,
+  "lora_targets": [
+    "down_proj",
+    "gate_proj",
+    "k_proj",
+    "o_proj",
+    "q_proj",
+    "up_proj",
+    "v_proj"
+  ],
+  "conv_modules_not_adapted": [],
+  "n_conv1d_modules": 0,
+  "train_conv": false,
+  "conv_params_unfrozen": 0,
+  "linear_module_names_present": [
+    "down_proj",
+    "gate_proj",
+    "k_proj",
+    "lm_head",
+    "o_proj",
+    "q_proj",
+    "up_proj",
+    "v_proj"
+  ],
+  "trainable_params": 21626880,
+  "total_params": 2434447360,
+  "trainable_pct": 0.8884,
+  "objective": "controller-SFT: loss on action completion only",
+  "token_budget_per_update": 4096,
+  "ts": "2026-09-02T03:16:15Z",
+  "arms": [
+    {
+      "seq_len": 1024,
+      "microbatch": 1,
+      "grad_accum": 4,
+      "tokens_per_update": 4096,
+      "logits_to_keep": 8,
+      "examples_per_update": 4,
+      "examples_per_s": 0.84,
+      "supervised_tokens_per_example": 1.61,
+      "action_tokens_per_s": 1.3,
+      "steps_timed": 6,
+      "step_s_median": 4.7862,
+      "tokens_per_s": 855.8,
+      "fwd_s_median": 2.0271,
+      "bwd_s_median": 2.7418,
+      "peak_mem_mib": 18802.7,
+      "watts": 107.6,
+      "loss_first": 7.644,
+      "loss_last": 7.6579
+    },
+    {
+      "seq_len": 2048,
+      "microbatch": 1,
+      "grad_accum": 2,
+      "tokens_per_update": 4096,
+      "logits_to_keep": 8,
+      "examples_per_update": 2,
+      "examples_per_s": 0.33,
+      "supervised_tokens_per_example": 1.61,
+      "action_tokens_per_s": 0.5,
+      "steps_timed": 6,
+      "step_s_median": 6.1025,
+      "tokens_per_s": 671.2,
+      "fwd_s_median": 2.5724,
+      "bwd_s_median": 3.5149,
+      "peak_mem_mib": 35831.8,
+      "watts": 108.2,
+      "loss_first": 8.4791,
+      "loss_last": 8.5209
+    }
+  ],
+  "corpus": {
+    "1024": {
+      "prompt_tokens": 1023,
+      "supervised_tokens_mean": 1.609375,
+      "supervised_tokens_min": 1,
+      "supervised_tokens_max": 3,
+      "supervised_fraction": 0.0015716552734375
+    },
+    "2048": {
+      "prompt_tokens": 2047,
+      "supervised_tokens_mean": 1.609375,
+      "supervised_tokens_min": 1,
+      "supervised_tokens_max": 3,
+      "supervised_fraction": 0.00078582763671875
+    }
+  }
+}

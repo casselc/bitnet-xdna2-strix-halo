@@ -84,12 +84,14 @@ boundary.
 
 At production length (seq 2048), action-only loss, restricted logits, eager, mb1:
 
-| model | input tok/s | examples/s | act-tok/s | peak | **100k decisions** |
+| model | params | input tok/s | examples/s | peak | **100k decisions** |
 |---|---:|---:|---:|---:|---:|
-| **LFM2.5-1.2B** | 1474.0 | **0.72** | 1.9 | 12.8 GiB | **38.6 h** |
-| Qwen3.5-0.8B | 816.2 | 0.40 | 0.6 | 15.6 GiB | 69.4 h |
-| Qwen3.5-2B | 650.8 | 0.32 | 0.5 | 19.9 GiB | 86.8 h |
-| Qwen3.5-4B | 256.5 | 0.13 | 0.2 | 46.6 GiB | 213.7 h |
+| **LFM2.5-1.2B** | 1.18 B | **1474.0** | **0.72** | **12.8 GiB** | **38.6 h** |
+| LFM2.5-2.6B | 2.72 B | 784.5 | 0.38 | 22.7 GiB | 73.1 h |
+| Qwen3.5-0.8B | 0.76 B | 816.2 | 0.40 | 15.6 GiB | 69.4 h |
+| BitNet-b1.58-2B BF16 | 2.43 B | 671.2 | 0.33 | 35.8 GiB | 84.2 h |
+| Qwen3.5-2B | 1.89 B | 650.8 | 0.32 | 19.9 GiB | 86.8 h |
+| Qwen3.5-4B | 4.23 B | 256.5 | 0.13 | 46.6 GiB | 213.7 h |
 
 **The units matter.** At seq 2048 only 0.079-0.127% of tokens are supervised, so
 "100M input tokens" is about **49,000 decisions**, not a large labelled set. A
@@ -98,6 +100,14 @@ roughly 2x what the input-token framing suggests.
 
 Also established:
 
+- **BitNet BF16 trains with standard PEFT** — no BitLinear obstacle; its BF16
+  master exposes ordinary `nn.Linear` under conventional names. The only snag is
+  packaging: `auto_map` points at modeling files absent from the repo, so
+  `trust_remote_code` fails while the native transformers implementation works
+  once `auto_map` is removed. **NOT** `BITNET STANDARD-LORA SUPPORT BLOCKED`.
+- **LFM2.5's training lead survives scaling** — at 2.72 B it still out-throughputs
+  Qwen3.5-2B (1.89 B), 784.5 vs 650.8 tok/s, so the 1.2B result is not a
+  small-model artifact.
 - **Restricted logits are bit-identical**, now properly: per-element over every
   trainable tensor (228 / 7.27 M and 184 / 11.11 M elements, max\|Δ\| = 0) *and*
   every parameter after a full AdamW step. Saves 24.9% / 9.4% peak memory. The
@@ -132,11 +142,6 @@ Also established:
   reuse already works without it once the boundary is token-exact, so the arm lost
   its decision value. It would still be the right experiment for the
   *non*-exact-boundary case, which Samizdat does not have.
-- **LFM2.5-2.6B and BitNet BF16 controller-SFT** — chained to their downloads;
-  see the final commit for whichever completed. The BitNet BF16 repo's `auto_map`
-  points at `configuration_bitnet.py` / `modeling_bitnet.py` that are **absent
-  from the repo**, so `trust_remote_code` fails; transformers 5.16.1 has a native
-  `bitnet` implementation that loads correctly once `auto_map` is removed.
 - **The LFM2 split-evaluation mechanism** — reproduced and bounded, not isolated
   to a kernel.
 - **Fixed-semantic benchmarking** — still outstanding from the previous branch and
