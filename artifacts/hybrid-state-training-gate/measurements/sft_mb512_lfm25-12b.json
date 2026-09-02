@@ -1,0 +1,136 @@
+{
+  "label": "lfm25-12b-mb512",
+  "model": "LiquidAI/LFM2.5-1.2B-Instruct",
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "attn_implementation": "eager",
+  "torch": "2.10.0+rocm7.0",
+  "hip": "7.0.51831",
+  "gpu": "Radeon 8060S Graphics",
+  "load_s": 1.8,
+  "lora_r": 16,
+  "lora_targets": [
+    "in_proj",
+    "k_proj",
+    "out_proj",
+    "q_proj",
+    "v_proj",
+    "w1",
+    "w2",
+    "w3"
+  ],
+  "conv_modules_not_adapted": [
+    "conv"
+  ],
+  "n_conv1d_modules": 10,
+  "linear_module_names_present": [
+    "in_proj",
+    "k_proj",
+    "lm_head",
+    "out_proj",
+    "q_proj",
+    "v_proj",
+    "w1",
+    "w2",
+    "w3"
+  ],
+  "trainable_params": 11108352,
+  "total_params": 1181448960,
+  "trainable_pct": 0.9402,
+  "objective": "controller-SFT: loss on action completion only",
+  "token_budget_per_update": 4096,
+  "ts": "2026-09-02T00:52:12Z",
+  "arms": [
+    {
+      "seq_len": 512,
+      "microbatch": 1,
+      "grad_accum": 8,
+      "tokens_per_update": 4096,
+      "logits_to_keep": 8,
+      "steps_timed": 8,
+      "step_s_median": 2.2868,
+      "tokens_per_s": 1791.1,
+      "fwd_s_median": 1.1673,
+      "bwd_s_median": 1.1121,
+      "peak_mem_mib": 4024.0,
+      "watts": 101.7,
+      "loss_first": 2.813,
+      "loss_last": 0.558
+    },
+    {
+      "seq_len": 512,
+      "microbatch": 2,
+      "grad_accum": 4,
+      "tokens_per_update": 4096,
+      "logits_to_keep": 8,
+      "steps_timed": 8,
+      "step_s_median": 2.3645,
+      "tokens_per_s": 1732.3,
+      "fwd_s_median": 0.9857,
+      "bwd_s_median": 1.3713,
+      "peak_mem_mib": 5582.1,
+      "watts": 105.4,
+      "loss_first": 0.9873,
+      "loss_last": 0.42
+    },
+    {
+      "seq_len": 512,
+      "microbatch": 4,
+      "grad_accum": 2,
+      "tokens_per_update": 4096,
+      "logits_to_keep": 8,
+      "steps_timed": 8,
+      "step_s_median": 2.3768,
+      "tokens_per_s": 1723.3,
+      "fwd_s_median": 0.974,
+      "bwd_s_median": 1.3938,
+      "peak_mem_mib": 8698.3,
+      "watts": 106.6,
+      "loss_first": 0.2658,
+      "loss_last": 0.1855
+    },
+    {
+      "seq_len": 512,
+      "microbatch": 8,
+      "grad_accum": 1,
+      "tokens_per_update": 4096,
+      "logits_to_keep": 8,
+      "steps_timed": 8,
+      "step_s_median": 2.4024,
+      "tokens_per_s": 1704.9,
+      "fwd_s_median": 0.9683,
+      "bwd_s_median": 1.4271,
+      "peak_mem_mib": 14888.4,
+      "watts": 106.4,
+      "loss_first": 0.2349,
+      "loss_last": 0.1048
+    }
+  ],
+  "corpus": {
+    "512": {
+      "prompt_tokens": 510,
+      "supervised_tokens_mean": 2.609375,
+      "supervised_tokens_min": 2,
+      "supervised_tokens_max": 4,
+      "supervised_fraction": 0.005096435546875
+    }
+  },
+  "logits_check": {
+    "512": {
+      "full": {
+        "loss": 7.997118949890137,
+        "grad_norm": 143.46441650390625,
+        "peak_mem_mib": 4220.2
+      },
+      "restricted": {
+        "loss": 7.997118949890137,
+        "grad_norm": 143.46441650390625,
+        "peak_mem_mib": 3939.2
+      },
+      "delta_loss": 0.0,
+      "delta_grad_norm": 0.0,
+      "rel_grad_norm_delta": 0.0,
+      "equivalent": true
+    }
+  }
+}

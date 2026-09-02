@@ -1,0 +1,102 @@
+{
+  "label": "lfm25-12b-mb1024",
+  "model": "LiquidAI/LFM2.5-1.2B-Instruct",
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "attn_implementation": "eager",
+  "torch": "2.10.0+rocm7.0",
+  "hip": "7.0.51831",
+  "gpu": "Radeon 8060S Graphics",
+  "load_s": 2.4,
+  "lora_r": 16,
+  "lora_targets": [
+    "in_proj",
+    "k_proj",
+    "out_proj",
+    "q_proj",
+    "v_proj",
+    "w1",
+    "w2",
+    "w3"
+  ],
+  "conv_modules_not_adapted": [
+    "conv"
+  ],
+  "n_conv1d_modules": 10,
+  "linear_module_names_present": [
+    "in_proj",
+    "k_proj",
+    "lm_head",
+    "out_proj",
+    "q_proj",
+    "v_proj",
+    "w1",
+    "w2",
+    "w3"
+  ],
+  "trainable_params": 11108352,
+  "total_params": 1181448960,
+  "trainable_pct": 0.9402,
+  "objective": "controller-SFT: loss on action completion only",
+  "token_budget_per_update": 4096,
+  "ts": "2026-09-02T00:56:11Z",
+  "arms": [
+    {
+      "seq_len": 1024,
+      "microbatch": 1,
+      "grad_accum": 4,
+      "tokens_per_update": 4096,
+      "logits_to_keep": 8,
+      "steps_timed": 8,
+      "step_s_median": 2.3127,
+      "tokens_per_s": 1771.1,
+      "fwd_s_median": 1.0523,
+      "bwd_s_median": 1.2522,
+      "peak_mem_mib": 6159.0,
+      "watts": 108.3,
+      "loss_first": 2.0939,
+      "loss_last": 0.7647
+    },
+    {
+      "seq_len": 1024,
+      "microbatch": 2,
+      "grad_accum": 2,
+      "tokens_per_update": 4096,
+      "logits_to_keep": 8,
+      "steps_timed": 8,
+      "step_s_median": 2.7865,
+      "tokens_per_s": 1470.0,
+      "fwd_s_median": 1.048,
+      "bwd_s_median": 1.7308,
+      "peak_mem_mib": 9852.1,
+      "watts": 104.1,
+      "loss_first": 1.0277,
+      "loss_last": 0.3221
+    },
+    {
+      "seq_len": 1024,
+      "microbatch": 4,
+      "grad_accum": 1,
+      "tokens_per_update": 4096,
+      "logits_to_keep": 8,
+      "steps_timed": 8,
+      "step_s_median": 2.7945,
+      "tokens_per_s": 1465.8,
+      "fwd_s_median": 1.0386,
+      "bwd_s_median": 1.7479,
+      "peak_mem_mib": 17195.7,
+      "watts": 104.4,
+      "loss_first": 0.4189,
+      "loss_last": 0.3934
+    }
+  ],
+  "corpus": {
+    "1024": {
+      "prompt_tokens": 1022,
+      "supervised_tokens_mean": 2.609375,
+      "supervised_tokens_min": 2,
+      "supervised_tokens_max": 4,
+      "supervised_fraction": 0.0025482177734375
+    }
+  }
+}
