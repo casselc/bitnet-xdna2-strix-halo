@@ -1,0 +1,26 @@
+{
+  "label": "qwen35-08b",
+  "model": "qwen3.5-0.8b-q4_0.gguf",
+  "spine_tokens": 1625,
+  "delta_tokens": 139,
+  "n_predict": 8,
+  "ts": "2026-09-02T00:35:15Z",
+  "runs": {
+    "32": {
+      "content": " HOLD\n\n<think>\n\n</think>\n\nACTION:",
+      "cache_n": 0,
+      "prompt_n": 1758,
+      "topk_size": 100
+    },
+    "0": {
+      "content": " HOLD\n\n<think>\n\n</think>\n\nACTION:",
+      "cache_n": 0,
+      "prompt_n": 1758,
+      "topk_size": 100
+    }
+  },
+  "identical_output": true,
+  "max_abs_dlogprob": 0.18138837814331055,
+  "n_common_topk": 98,
+  "verdict": "SENSITIVE to context checkpoints"
+}

@@ -1,0 +1,26 @@
+{
+  "label": "lfm25-12b",
+  "model": "lfm2.5-1.2b-q4km.gguf",
+  "spine_tokens": 1575,
+  "delta_tokens": 135,
+  "n_predict": 8,
+  "ts": "2026-09-02T00:35:09Z",
+  "runs": {
+    "32": {
+      "content": " 1\n```\n\nOUTPUT\n ",
+      "cache_n": 0,
+      "prompt_n": 1710,
+      "topk_size": 100
+    },
+    "0": {
+      "content": " 1\nRECOMMENDATION",
+      "cache_n": 0,
+      "prompt_n": 1710,
+      "topk_size": 100
+    }
+  },
+  "identical_output": false,
+  "max_abs_dlogprob": 0.37067556381225586,
+  "n_common_topk": 97,
+  "verdict": "SENSITIVE to context checkpoints"
+}

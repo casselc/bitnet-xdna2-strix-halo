@@ -1,0 +1,97 @@
+{
+  "label": "lfm25-ctxcp32",
+  "note": "ctx-checkpoints=32 (default)",
+  "port": 8091,
+  "spine_tokens": 1575,
+  "delta_tokens": 135,
+  "topk": 100,
+  "ts": "2026-09-02T00:27:14Z",
+  "boundary": {
+    "tokenize_no_bos": 1575,
+    "tokenize_with_bos": 1576,
+    "n_predict0": {
+      "bytes": 19555404,
+      "saved_tokens": 1576,
+      "prompt_n": 1576,
+      "predicted_n": 1,
+      "err": ""
+    },
+    "n_predict1": {
+      "bytes": 19555404,
+      "saved_tokens": 1576,
+      "prompt_n": 1576,
+      "predicted_n": 1,
+      "err": ""
+    },
+    "exact_boundary": true,
+    "np0_np1_identical": true
+  },
+  "checkpoint_bytes": 19555404,
+  "reference": {
+    "content": " ",
+    "cache_n": 0,
+    "prompt_n": 1710,
+    "ttft_ms": 1181.731,
+    "total_ms": 1181.732,
+    "decision": " 1\n```\n\nOUTPUT\n "
+  },
+  "arms": [
+    {
+      "n_common": 100,
+      "max_abs": 0.0,
+      "mean_abs": 0.0,
+      "top1_same": true,
+      "next_token_same": true,
+      "arm": "B_clean",
+      "restore_ms": 4.12,
+      "restored_tokens": 1576,
+      "restore_err": "",
+      "cache_n": 0,
+      "prompt_n": 1710,
+      "ttft_ms": 1181.017,
+      "total_ms": 1181.018,
+      "content": " ",
+      "decision": " 1\n```\n\nOUTPUT\n ",
+      "decision_same": true,
+      "reused": false
+    },
+    {
+      "n_common": 98,
+      "max_abs": 0.23902177810668945,
+      "mean_abs": 0.07694807466195554,
+      "top1_same": true,
+      "next_token_same": true,
+      "arm": "C_foreign",
+      "restore_ms": 4.67,
+      "restored_tokens": 1576,
+      "restore_err": "",
+      "cache_n": 1568,
+      "prompt_n": 142,
+      "ttft_ms": 115.959,
+      "total_ms": 115.96000000000001,
+      "content": " ",
+      "decision": " 1\nRECOMMENDATION",
+      "decision_same": false,
+      "reused": true
+    },
+    {
+      "n_common": 98,
+      "max_abs": 0.23902177810668945,
+      "mean_abs": 0.07694807466195554,
+      "top1_same": true,
+      "next_token_same": true,
+      "arm": "D_clean_after_foreign",
+      "restore_ms": 4.21,
+      "restored_tokens": 1576,
+      "restore_err": "",
+      "cache_n": 1568,
+      "prompt_n": 142,
+      "ttft_ms": 116.216,
+      "total_ms": 116.217,
+      "content": " ",
+      "decision": " 1\nRECOMMENDATION",
+      "decision_same": false,
+      "reused": true
+    }
+  ]
+}

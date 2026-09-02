@@ -1,0 +1,98 @@
+{
+  "label": "qwen35-08b-cp0",
+  "note": "ctx-checkpoints=0",
+  "port": 8098,
+  "spine_tokens": 1625,
+  "delta_tokens": 139,
+  "topk": 100,
+  "ts": "2026-09-02T00:36:35Z",
+  "boundary": {
+    "tokenize_no_bos": 1622,
+    "tokenize_with_bos": 1622,
+    "n_predict0": {
+      "bytes": 40172188,
+      "saved_tokens": 1622,
+      "prompt_n": 1622,
+      "predicted_n": 1,
+      "err": ""
+    },
+    "n_predict1": {
+      "bytes": 40172188,
+      "saved_tokens": 1622,
+      "prompt_n": 1622,
+      "predicted_n": 1,
+      "err": ""
+    },
+    "exact_boundary": true,
+    "np0_np1_identical": true
+  },
+  "checkpoint_bytes": 40172188,
+  "reference": {
+    "content": " HOLD",
+    "cache_n": 0,
+    "prompt_n": 1758,
+    "ttft_ms": 1703.104,
+    "total_ms": 1703.105,
+    "decision": " HOLD\n\n<think>\n\n</think>\n\nACTION:"
+  },
+  "arms": [
+    {
+      "n_common": 100,
+      "max_abs": 0.0,
+      "mean_abs": 0.0,
+      "top1_same": true,
+      "next_token_same": true,
+      "arm": "B_clean",
+      "restore_ms": 5.74,
+      "restored_tokens": 1622,
+      "restore_err": "",
+      "cache_n": 0,
+      "prompt_n": 1758,
+      "ttft_ms": 1695.518,
+      "total_ms": 1695.519,
+      "content": " HOLD",
+      "decision": " HOLD\n\n<think>\n\n</think>\n\nACTION:",
+      "decision_same": true,
+      "reused": false
+    },
+    {
+      "n_common": 100,
+      "max_abs": 0.0,
+      "mean_abs": 0.0,
+      "top1_same": true,
+      "next_token_same": true,
+      "arm": "C_foreign",
+      "restore_ms": 7.24,
+      "restored_tokens": 1622,
+      "restore_err": "",
+      "cache_n": 0,
+      "prompt_n": 1758,
+      "ttft_ms": 1711.028,
+      "total_ms": 1711.029,
+      "content": " HOLD",
+      "decision": " HOLD\n\n<think>\n\n</think>\n\nACTION:",
+      "decision_same": true,
+      "reused": false
+    },
+    {
+      "n_common": 100,
+      "max_abs": 0.0,
+      "mean_abs": 0.0,
+      "top1_same": true,
+      "next_token_same": true,
+      "arm": "D_clean_after_foreign",
+      "restore_ms": 6.1,
+      "restored_tokens": 1622,
+      "restore_err": "",
+      "cache_n": 0,
+      "prompt_n": 1758,
+      "ttft_ms": 1702.364,
+      "total_ms": 1702.365,
+      "content": " HOLD",
+      "decision": " HOLD\n\n<think>\n\n</think>\n\nACTION:",
+      "decision_same": true,
+      "reused": false
+    }
+  ],
+  "server_log_excerpt": []
+}

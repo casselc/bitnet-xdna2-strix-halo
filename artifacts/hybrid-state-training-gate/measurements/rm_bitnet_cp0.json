@@ -1,0 +1,98 @@
+{
+  "label": "bitnet-cp0",
+  "note": "ctx-checkpoints=0",
+  "port": 8098,
+  "spine_tokens": 1600,
+  "delta_tokens": 146,
+  "topk": 100,
+  "ts": "2026-09-02T00:36:06Z",
+  "boundary": {
+    "tokenize_no_bos": 1599,
+    "tokenize_with_bos": 1600,
+    "n_predict0": {
+      "bytes": 122906376,
+      "saved_tokens": 1600,
+      "prompt_n": 1600,
+      "predicted_n": 1,
+      "err": ""
+    },
+    "n_predict1": {
+      "bytes": 122906376,
+      "saved_tokens": 1600,
+      "prompt_n": 1600,
+      "predicted_n": 1,
+      "err": ""
+    },
+    "exact_boundary": true,
+    "np0_np1_identical": true
+  },
+  "checkpoint_bytes": 122906376,
+  "reference": {
+    "content": " ",
+    "cache_n": 0,
+    "prompt_n": 1745,
+    "ttft_ms": 1617.363,
+    "total_ms": 1617.364,
+    "decision": " 1\ns002 81 "
+  },
+  "arms": [
+    {
+      "n_common": 100,
+      "max_abs": 0.0,
+      "mean_abs": 0.0,
+      "top1_same": true,
+      "next_token_same": true,
+      "arm": "B_clean",
+      "restore_ms": 13.31,
+      "restored_tokens": 1600,
+      "restore_err": "",
+      "cache_n": 1600,
+      "prompt_n": 145,
+      "ttft_ms": 214.163,
+      "total_ms": 214.16400000000002,
+      "content": " ",
+      "decision": " 1\ns002 81 ",
+      "decision_same": true,
+      "reused": true
+    },
+    {
+      "n_common": 100,
+      "max_abs": 0.0,
+      "mean_abs": 0.0,
+      "top1_same": true,
+      "next_token_same": true,
+      "arm": "C_foreign",
+      "restore_ms": 16.1,
+      "restored_tokens": 1600,
+      "restore_err": "",
+      "cache_n": 1600,
+      "prompt_n": 145,
+      "ttft_ms": 214.733,
+      "total_ms": 214.734,
+      "content": " ",
+      "decision": " 1\ns002 81 ",
+      "decision_same": true,
+      "reused": true
+    },
+    {
+      "n_common": 100,
+      "max_abs": 0.0,
+      "mean_abs": 0.0,
+      "top1_same": true,
+      "next_token_same": true,
+      "arm": "D_clean_after_foreign",
+      "restore_ms": 13.44,
+      "restored_tokens": 1600,
+      "restore_err": "",
+      "cache_n": 1600,
+      "prompt_n": 145,
+      "ttft_ms": 213.937,
+      "total_ms": 213.93800000000002,
+      "content": " ",
+      "decision": " 1\ns002 81 ",
+      "decision_same": true,
+      "reused": true
+    }
+  ],
+  "server_log_excerpt": []
+}

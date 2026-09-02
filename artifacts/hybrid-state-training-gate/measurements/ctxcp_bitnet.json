@@ -1,0 +1,26 @@
+{
+  "label": "bitnet",
+  "model": "ggml-model-i2_s.gguf",
+  "spine_tokens": 1600,
+  "delta_tokens": 146,
+  "n_predict": 8,
+  "ts": "2026-09-02T00:34:59Z",
+  "runs": {
+    "32": {
+      "content": " 1\ns002 81 ",
+      "cache_n": 0,
+      "prompt_n": 1745,
+      "topk_size": 100
+    },
+    "0": {
+      "content": " 1\ns002 81 ",
+      "cache_n": 0,
+      "prompt_n": 1745,
+      "topk_size": 100
+    }
+  },
+  "identical_output": true,
+  "max_abs_dlogprob": 0.0,
+  "n_common_topk": 100,
+  "verdict": "INSENSITIVE to context checkpoints"
+}

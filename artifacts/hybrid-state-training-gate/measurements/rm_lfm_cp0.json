@@ -1,0 +1,97 @@
+{
+  "label": "lfm25-ctxcp0",
+  "note": "ctx-checkpoints=0 (disabled)",
+  "port": 8091,
+  "spine_tokens": 1575,
+  "delta_tokens": 135,
+  "topk": 100,
+  "ts": "2026-09-02T00:27:40Z",
+  "boundary": {
+    "tokenize_no_bos": 1575,
+    "tokenize_with_bos": 1576,
+    "n_predict0": {
+      "bytes": 19555404,
+      "saved_tokens": 1576,
+      "prompt_n": 1576,
+      "predicted_n": 1,
+      "err": ""
+    },
+    "n_predict1": {
+      "bytes": 19555404,
+      "saved_tokens": 1576,
+      "prompt_n": 1576,
+      "predicted_n": 1,
+      "err": ""
+    },
+    "exact_boundary": true,
+    "np0_np1_identical": true
+  },
+  "checkpoint_bytes": 19555404,
+  "reference": {
+    "content": " ",
+    "cache_n": 0,
+    "prompt_n": 1710,
+    "ttft_ms": 1169.45,
+    "total_ms": 1169.451,
+    "decision": " 1\nRECOMMENDATION"
+  },
+  "arms": [
+    {
+      "n_common": 100,
+      "max_abs": 0.0,
+      "mean_abs": 0.0,
+      "top1_same": true,
+      "next_token_same": true,
+      "arm": "B_clean",
+      "restore_ms": 3.79,
+      "restored_tokens": 1576,
+      "restore_err": "",
+      "cache_n": 0,
+      "prompt_n": 1710,
+      "ttft_ms": 1170.386,
+      "total_ms": 1170.387,
+      "content": " ",
+      "decision": " 1\nRECOMMENDATION",
+      "decision_same": true,
+      "reused": false
+    },
+    {
+      "n_common": 100,
+      "max_abs": 0.0,
+      "mean_abs": 0.0,
+      "top1_same": true,
+      "next_token_same": true,
+      "arm": "C_foreign",
+      "restore_ms": 4.48,
+      "restored_tokens": 1576,
+      "restore_err": "",
+      "cache_n": 0,
+      "prompt_n": 1710,
+      "ttft_ms": 1180.304,
+      "total_ms": 1180.305,
+      "content": " ",
+      "decision": " 1\nRECOMMENDATION",
+      "decision_same": true,
+      "reused": false
+    },
+    {
+      "n_common": 100,
+      "max_abs": 0.0,
+      "mean_abs": 0.0,
+      "top1_same": true,
+      "next_token_same": true,
+      "arm": "D_clean_after_foreign",
+      "restore_ms": 3.56,
+      "restored_tokens": 1576,
+      "restore_err": "",
+      "cache_n": 0,
+      "prompt_n": 1710,
+      "ttft_ms": 1169.899,
+      "total_ms": 1169.8999999999999,
+      "content": " ",
+      "decision": " 1\nRECOMMENDATION",
+      "decision_same": true,
+      "reused": false
+    }
+  ]
+}
