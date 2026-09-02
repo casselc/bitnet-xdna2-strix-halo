@@ -1,0 +1,79 @@
+{
+  "label": "bitnet-split",
+  "note": "token-exact boundary, ctxcp=0, with split-eval control",
+  "binary": "llama-server",
+  "server_args": [],
+  "ctxcp": 0,
+  "ub": 4096,
+  "model": "ggml-model-i2_s.gguf",
+  "spine_tokens": 1600,
+  "delta_tokens": 146,
+  "ts": "2026-09-02T02:28:51Z",
+  "spine_tokens_text_only": 1600,
+  "spine_tokens_exact_boundary": 1600,
+  "boundary_lost_to_bpe_merge": 0,
+  "spine_prompt_n": 1600,
+  "saved_tokens": 1600,
+  "saved_bytes": 122906376,
+  "restore_ms": 21.49,
+  "restored_tokens": 1600,
+  "A": {
+    "content": " ",
+    "cache_n": 0,
+    "prompt_n": 1745,
+    "ttft_ms": 2521.292,
+    "total_ms": 2521.293
+  },
+  "A_decision": " 1\ns002 81 ",
+  "R": {
+    "content": " ",
+    "cache_n": 1600,
+    "prompt_n": 145,
+    "ttft_ms": 282.794,
+    "total_ms": 282.79499999999996
+  },
+  "R_decision": " 1\ns002 81 ",
+  "S": {
+    "content": " ",
+    "cache_n": 1600,
+    "prompt_n": 145,
+    "ttft_ms": 275.108,
+    "total_ms": 275.109
+  },
+  "S_decision": " 1\ns002 81 ",
+  "S_vs_A": {
+    "n_common": 100,
+    "max_abs": 0.0,
+    "mean_abs": 0.0,
+    "top1_same": true
+  },
+  "S_decision_same": true,
+  "R_vs_A": {
+    "n_common": 100,
+    "max_abs": 0.0,
+    "mean_abs": 0.0,
+    "top1_same": true
+  },
+  "R_vs_S": {
+    "n_common": 100,
+    "max_abs": 0.0,
+    "mean_abs": 0.0,
+    "top1_same": true
+  },
+  "decision_same": true,
+  "reference_top_logprobs": {
+    "220": -1.9837342500686646,
+    "26954": -2.0789034366607666,
+    "2385": -3.8881168365478516,
+    "65711": -4.507774353027344,
+    "274": -4.578372955322266,
+    "348": -4.787158012390137,
+    "77058": -4.801214218139648,
+    "320": -5.286032676696777,
+    "510": -5.345462799072266,
+    "259": -5.374199867248535
+  },
+  "reuse_ok": true,
+  "numerically_exact": true,
+  "verdict": "REUSE + EXACT"
+}

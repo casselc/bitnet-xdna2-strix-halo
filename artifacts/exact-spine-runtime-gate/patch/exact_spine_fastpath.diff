@@ -1,0 +1,119 @@
+--- a/tools/server/server-task.h	2026-08-30 00:36:21.588487629 -0700
++++ b/tools/server/server-task.h	2026-09-01 19:21:00.397685499 -0700
+@@ -598,6 +598,13 @@
+ 
+     std::list<common_prompt_checkpoint> checkpoints;
+ 
++    // [SAMIZDAT_EXACT_SPINE]
++    // Number of tokens whose sequence state was loaded verbatim by SLOT_RESTORE:
++    // the memory holds exactly the state after tokens[0 .. n_restored_exact).
++    // 0 means this prompt did not come from a restore. Used only to scope the
++    // exact-spine fast path; it never changes behaviour when that path is off.
++    int n_restored_exact = 0;
++
+     size_t size() const {
+         size_t res = 0;
+ 
+@@ -619,6 +626,7 @@
+             tokens.clone(),
+             data,
+             checkpoints,
++            n_restored_exact,
+         };
+     }
+ };
+--- a/tools/server/server-context.cpp	2026-08-30 00:36:21.587487547 -0700
++++ b/tools/server/server-context.cpp	2026-09-01 19:21:34.868503437 -0700
+@@ -265,6 +265,7 @@
+         }
+ 
+         prompt.tokens.clear();
++        prompt.n_restored_exact = 0;   // [SAMIZDAT_EXACT_SPINE]
+     }
+ 
+     std::vector<common_adapter_lora_info> lora;
+@@ -2616,6 +2617,13 @@
+                     slot->prompt.tokens.clear();
+                     slot->prompt.tokens.insert(tokens);
+ 
++                    // [SAMIZDAT_EXACT_SPINE] the memory now holds exactly the state
++                    // after these token_count tokens. Record the boundary so a later
++                    // prompt that extends it can skip the rollback search entirely.
++                    // Note the checkpoint list is NOT restored (it is not serialised),
++                    // which is precisely why hybrid reuse otherwise fails here.
++                    slot->prompt.n_restored_exact = (int) token_count;
++
+                     const int64_t t_end = ggml_time_us();
+                     const double t_restore_ms = (t_end - t_start) / 1000.0;
+ 
+@@ -3250,7 +3258,37 @@
+                             // the largest pos_min required for a checkpoint to be useful
+                             const auto pos_min_thold = std::max(0, pos_next - n_swa - (has_new_tokens ? 0 : 1));
+ 
+-                            if (n_past > 0 && n_past <= slot.prompt.n_tokens()) {
++                            // [SAMIZDAT_EXACT_SPINE]
++                            // The block below exists to handle a ROLLBACK: the new prompt
++                            // diverges inside the cached sequence, so the memory must be
++                            // rewound to n_past. Recurrent/hybrid memory cannot rewind, so it
++                            // searches for a context checkpoint and, finding none, discards the
++                            // whole prefix (do_reset) -- which is why a restored hybrid slot
++                            // re-prefills everything.
++                            //
++                            // When the cached sequence is ENTIRELY a prefix of the new prompt
++                            // there is no rollback to perform: evaluation only appends. The
++                            // seq_rm below this block is then [n_past, end) over an empty
++                            // range, and keep_first(n_past) is a no-op. So the search is
++                            // unnecessary, and skipping it is not an approximation.
++                            //
++                            // Scoped to slots whose state came from SLOT_RESTORE and whose
++                            // cached tokens are exactly that restored sequence, so ordinary
++                            // multi-turn behaviour is untouched. Requires a non-empty suffix,
++                            // which also keeps [TAG_PROMPT_LOGITS] from decrementing n_past.
++                            const bool exact_spine_ok =
++                                params_base.exact_spine_fast_path &&
++                                slot.prompt.n_restored_exact > 0 &&
++                                n_past == slot.prompt.n_tokens() &&
++                                n_past == slot.prompt.n_restored_exact &&
++                                n_past < slot.task->n_tokens();
++
++                            if (exact_spine_ok) {
++                                SLT_INF(slot, "exact-spine fast path: reusing %d restored tokens, evaluating suffix of %d\n",
++                                        n_past, slot.task->n_tokens() - n_past);
++                            }
++
++                            if (!exact_spine_ok && n_past > 0 && n_past <= slot.prompt.n_tokens()) {
+                                 const auto pos_min = llama_memory_seq_pos_min(llama_get_memory(ctx_tgt), slot.id);
+                                 if (pos_min == -1) {
+                                     SLT_ERR(slot, "n_past = %d, slot.prompt.tokens.size() = %d, seq_id = %d, pos_min = %d\n", n_past, (int) slot.prompt.tokens.size(), slot.id, pos_min);
+--- a/common/common.h	2026-08-30 00:36:21.265461067 -0700
++++ b/common/common.h	2026-09-01 19:21:00.397685499 -0700
+@@ -621,6 +621,9 @@
+     bool    cache_prompt        = true;  // whether to enable prompt caching
+     bool    cache_idle_slots    = true;  // save and clear idle slots upon starting a new task
+     int32_t n_ctx_checkpoints   = 32;    // max number of context checkpoints per slot
++    // [SAMIZDAT_EXACT_SPINE] opt-in; default off so the binary is byte-behaviour
++    // identical to stock unless explicitly enabled.
++    bool exact_spine_fast_path = false;
+     int32_t checkpoint_min_step = 8192;  // minimum spacing between context checkpoints
+     int32_t cache_ram_mib       = 8192;  // -1 = no limit, 0 - disable, 1 = 1 MiB, etc.
+ 
+--- a/common/arg.cpp	2026-08-30 00:36:21.263460902 -0700
++++ b/common/arg.cpp	2026-09-01 19:21:12.144645795 -0700
+@@ -1454,6 +1454,17 @@
+         }
+     ).set_env("LLAMA_ARG_CTX_CHECKPOINTS").set_examples({LLAMA_EXAMPLE_SERVER, LLAMA_EXAMPLE_CLI}));
+     add_opt(common_arg(
++        {"--exact-spine-fast-path"},
++        "EXPERIMENTAL: after a slot restore, if an incoming prompt begins with exactly the "
++        "restored token sequence, treat those tokens as already evaluated and process only the "
++        "suffix. Skips the context-checkpoint rollback search, which recurrent/hybrid memory "
++        "cannot satisfy. Requires the restored prefix to match token-for-token; falls back to "
++        "stock behaviour otherwise. Default: disabled",
++        [](common_params & params) {
++            params.exact_spine_fast_path = true;
++        }
++    ).set_env("LLAMA_ARG_EXACT_SPINE_FAST_PATH").set_examples({LLAMA_EXAMPLE_SERVER}));
++    add_opt(common_arg(
+         {"-cms", "--checkpoint-min-step"}, "N",
+         string_format("minimum spacing between context checkpoints in tokens (default: %d, 0 = no minimum)", params.checkpoint_min_step),
+         [](common_params & params, int value) {

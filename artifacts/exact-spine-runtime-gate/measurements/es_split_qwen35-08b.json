@@ -1,0 +1,79 @@
+{
+  "label": "qwen35-08b-split",
+  "note": "token-exact boundary, ctxcp=0, with split-eval control",
+  "binary": "llama-server",
+  "server_args": [],
+  "ctxcp": 0,
+  "ub": 4096,
+  "model": "qwen3.5-0.8b-q4_0.gguf",
+  "spine_tokens": 1625,
+  "delta_tokens": 139,
+  "ts": "2026-09-02T02:29:13Z",
+  "spine_tokens_text_only": 1622,
+  "spine_tokens_exact_boundary": 1621,
+  "boundary_lost_to_bpe_merge": 1,
+  "spine_prompt_n": 1621,
+  "saved_tokens": 1621,
+  "saved_bytes": 40159876,
+  "restore_ms": 7.3,
+  "restored_tokens": 1621,
+  "A": {
+    "content": " HOLD",
+    "cache_n": 0,
+    "prompt_n": 1758,
+    "ttft_ms": 1742.036,
+    "total_ms": 1742.037
+  },
+  "A_decision": " HOLD\n\n<think>\n\n</think>\n\nACTION:",
+  "R": {
+    "content": " HOLD",
+    "cache_n": 1621,
+    "prompt_n": 137,
+    "ttft_ms": 127.82,
+    "total_ms": 127.821
+  },
+  "R_decision": " HOLD\n\n<think>\n\n</think>\n\nACTION:",
+  "S": {
+    "content": " HOLD",
+    "cache_n": 1621,
+    "prompt_n": 137,
+    "ttft_ms": 126.702,
+    "total_ms": 126.703
+  },
+  "S_decision": " HOLD\n\n<think>\n\n</think>\n\nACTION:",
+  "S_vs_A": {
+    "n_common": 100,
+    "max_abs": 0.0,
+    "mean_abs": 0.0,
+    "top1_same": true
+  },
+  "S_decision_same": true,
+  "R_vs_A": {
+    "n_common": 100,
+    "max_abs": 0.0,
+    "mean_abs": 0.0,
+    "top1_same": true
+  },
+  "R_vs_S": {
+    "n_common": 100,
+    "max_abs": 0.0,
+    "mean_abs": 0.0,
+    "top1_same": true
+  },
+  "decision_same": true,
+  "reference_top_logprobs": {
+    "17021": -1.5210018157958984,
+    "3476": -1.859217643737793,
+    "198": -2.6114320755004883,
+    "271": -2.725893974304199,
+    "423": -3.2205066680908203,
+    "22041": -3.221742630004883,
+    "220": -3.4909000396728516,
+    "498": -3.878629684448242,
+    "75446": -3.968240737915039,
+    "51254": -4.263927459716797
+  },
+  "reuse_ok": true,
+  "numerically_exact": true,
+  "verdict": "REUSE + EXACT"
+}

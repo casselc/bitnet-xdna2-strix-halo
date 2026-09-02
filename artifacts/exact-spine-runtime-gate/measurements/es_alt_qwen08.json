@@ -1,0 +1,248 @@
+{
+  "label": "qwen08-alt",
+  "model": "qwen3.5-0.8b-q4_0.gguf",
+  "domains": 4,
+  "turns": 100,
+  "ctxcp": 0,
+  "ts": "2026-09-02T02:32:38Z",
+  "tags": [
+    "753ecd83d79e1ce1",
+    "4097cce199e7be57",
+    "abb921d7e8111543",
+    "b8b89ba853fb9610"
+  ],
+  "checkpoints": [
+    {
+      "file": "qwen08-alt.d0.state",
+      "n": 1622,
+      "bytes": 40172188,
+      "saved_tokens": 1622
+    },
+    {
+      "file": "qwen08-alt.d1.state",
+      "n": 1623,
+      "bytes": 40184500,
+      "saved_tokens": 1623
+    },
+    {
+      "file": "qwen08-alt.d2.state",
+      "n": 1621,
+      "bytes": 40159876,
+      "saved_tokens": 1621
+    },
+    {
+      "file": "qwen08-alt.d3.state",
+      "n": 1621,
+      "bytes": 40159876,
+      "saved_tokens": 1621
+    }
+  ],
+  "rows": [
+    {
+      "turn": 0,
+      "domain": 0,
+      "restore_ms": 7.44,
+      "cache_n": 1622,
+      "prompt_n": 139,
+      "ttft_ms": 133.888,
+      "total_ms": 180.37,
+      "verify": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "top1_same": true,
+        "content_same": true
+      }
+    },
+    {
+      "turn": 1,
+      "domain": 1,
+      "restore_ms": 6.64,
+      "cache_n": 1623,
+      "prompt_n": 140,
+      "ttft_ms": 132.403,
+      "total_ms": 178.511
+    },
+    {
+      "turn": 2,
+      "domain": 2,
+      "restore_ms": 6.99,
+      "cache_n": 1621,
+      "prompt_n": 139,
+      "ttft_ms": 129.064,
+      "total_ms": 174.67399999999998
+    },
+    {
+      "turn": 3,
+      "domain": 3,
+      "restore_ms": 7.21,
+      "cache_n": 1621,
+      "prompt_n": 136,
+      "ttft_ms": 123.478,
+      "total_ms": 168.855
+    },
+    {
+      "turn": 4,
+      "domain": 0,
+      "restore_ms": 7.21,
+      "cache_n": 1622,
+      "prompt_n": 137,
+      "ttft_ms": 131.563,
+      "total_ms": 176.765
+    },
+    {
+      "turn": 5,
+      "domain": 1,
+      "restore_ms": 7.0,
+      "cache_n": 1623,
+      "prompt_n": 137,
+      "ttft_ms": 133.739,
+      "total_ms": 179.02800000000002
+    },
+    {
+      "turn": 6,
+      "domain": 2,
+      "restore_ms": 7.18,
+      "cache_n": 1621,
+      "prompt_n": 136,
+      "ttft_ms": 124.535,
+      "total_ms": 170.106
+    },
+    {
+      "turn": 7,
+      "domain": 3,
+      "restore_ms": 7.39,
+      "cache_n": 1621,
+      "prompt_n": 134,
+      "ttft_ms": 130.598,
+      "total_ms": 175.91400000000002
+    },
+    {
+      "turn": 8,
+      "domain": 0,
+      "restore_ms": 7.29,
+      "cache_n": 1622,
+      "prompt_n": 139,
+      "ttft_ms": 140.019,
+      "total_ms": 184.79000000000002
+    },
+    {
+      "turn": 9,
+      "domain": 1,
+      "restore_ms": 6.99,
+      "cache_n": 1623,
+      "prompt_n": 135,
+      "ttft_ms": 132.159,
+      "total_ms": 177.094
+    },
+    {
+      "turn": 10,
+      "domain": 2,
+      "restore_ms": 7.64,
+      "cache_n": 1621,
+      "prompt_n": 139,
+      "ttft_ms": 131.237,
+      "total_ms": 176.119,
+      "verify": {
+        "max_abs": 0.0,
+        "mean_abs": 0.0,
+        "top1_same": true,
+        "content_same": true
+      }
+    },
+    {
+      "turn": 11,
+      "domain": 3,
+      "restore_ms": 6.85,
+      "cache_n": 1621,
+      "prompt_n": 139,
+      "ttft_ms": 131.823,
+      "total_ms": 177.59900000000002
+    },
+    {
+      "turn": 12,
+      "domain": 0,
+      "restore_ms": 7.33,
+      "cache_n": 1622,
+      "prompt_n": 135,
+      "ttft_ms": 126.583,
+      "total_ms": 172.18099999999998
+    },
+    {
+      "turn": 13,
+      "domain": 1,
+      "restore_ms": 7.06,
+      "cache_n": 1623,
+      "prompt_n": 135,
+      "ttft_ms": 129.72,
+      "total_ms": 175.096
+    },
+    {
+      "turn": 14,
+      "domain": 2,
+      "restore_ms": 6.84,
+      "cache_n": 1621,
+      "prompt_n": 135,
+      "ttft_ms": 131.879,
+      "total_ms": 178.079
+    },
+    {
+      "turn": 15,
+      "domain": 3,
+      "restore_ms": 7.31,
+      "cache_n": 1621,
+      "prompt_n": 135,
+      "ttft_ms": 137.265,
+      "total_ms": 182.981
+    },
+    {
+      "turn": 16,
+      "domain": 0,
+      "restore_ms": 7.16,
+      "cache_n": 1622,
+      "prompt_n": 140,
+      "ttft_ms": 140.455,
+      "total_ms": 185.30900000000003
+    },
+    {
+      "turn": 17,
+      "domain": 1,
+      "restore_ms": 6.73,
+      "cache_n": 1623,
+      "prompt_n": 137,
+      "ttft_ms": 129.197,
+      "total_ms": 174.49
+    },
+    {
+      "turn": 18,
+      "domain": 2,
+      "restore_ms": 6.89,
+      "cache_n": 1621,
+      "prompt_n": 139,
+      "ttft_ms": 134.101,
+      "total_ms": 177.829
+    },
+    {
+      "turn": 19,
+      "domain": 3,
+      "restore_ms": 7.24,
+      "cache_n": 1621,
+      "prompt_n": 140,
+      "ttft_ms": 136.714,
+      "total_ms": 181.725
+    }
+  ],
+  "summary": {
+    "turns": 100,
+    "reuse_min": 1621,
+    "reuse_max": 1623,
+    "ttft_p50": 131.583,
+    "ttft_p95": 137.388,
+    "restore_ms_p50": 7.22,
+    "verified_turns": 10,
+    "numerical_mismatches": 0,
+    "contaminated_turns": 0
+  },
+  "mismatches": [],
+  "contamination": [],
+  "verdict": "STABLE ACROSS ALTERNATING DOMAINS"
+}

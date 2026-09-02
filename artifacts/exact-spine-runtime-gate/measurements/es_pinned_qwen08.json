@@ -1,0 +1,79 @@
+{
+  "label": "qwen08-PINNED-stock",
+  "note": "ORIGINAL pinned binary, unpatched, token-exact boundary",
+  "binary": "refs/BitNet/build-xdna/bin/llama-server",
+  "server_args": [],
+  "ctxcp": 0,
+  "ub": 4096,
+  "model": "qwen3.5-0.8b-q4_0.gguf",
+  "spine_tokens": 1625,
+  "delta_tokens": 139,
+  "ts": "2026-09-02T02:34:00Z",
+  "spine_tokens_text_only": 1622,
+  "spine_tokens_exact_boundary": 1621,
+  "boundary_lost_to_bpe_merge": 1,
+  "spine_prompt_n": 1621,
+  "saved_tokens": 1621,
+  "saved_bytes": 40159876,
+  "restore_ms": 6.51,
+  "restored_tokens": 1621,
+  "A": {
+    "content": " HOLD",
+    "cache_n": 0,
+    "prompt_n": 1758,
+    "ttft_ms": 1771.132,
+    "total_ms": 1771.133
+  },
+  "A_decision": " HOLD\n\n<think>\n\n</think>\n\nACTION:",
+  "R": {
+    "content": " HOLD",
+    "cache_n": 1621,
+    "prompt_n": 137,
+    "ttft_ms": 129.225,
+    "total_ms": 129.226
+  },
+  "R_decision": " HOLD\n\n<think>\n\n</think>\n\nACTION:",
+  "S": {
+    "content": " HOLD",
+    "cache_n": 1621,
+    "prompt_n": 137,
+    "ttft_ms": 129.95,
+    "total_ms": 129.951
+  },
+  "S_decision": " HOLD\n\n<think>\n\n</think>\n\nACTION:",
+  "S_vs_A": {
+    "n_common": 100,
+    "max_abs": 0.0,
+    "mean_abs": 0.0,
+    "top1_same": true
+  },
+  "S_decision_same": true,
+  "R_vs_A": {
+    "n_common": 100,
+    "max_abs": 0.0,
+    "mean_abs": 0.0,
+    "top1_same": true
+  },
+  "R_vs_S": {
+    "n_common": 100,
+    "max_abs": 0.0,
+    "mean_abs": 0.0,
+    "top1_same": true
+  },
+  "decision_same": true,
+  "reference_top_logprobs": {
+    "17021": -1.5741082429885864,
+    "3476": -1.8206483125686646,
+    "198": -2.542546510696411,
+    "271": -2.636385202407837,
+    "423": -3.2315359115600586,
+    "22041": -3.369417428970337,
+    "220": -3.398212432861328,
+    "498": -3.8306007385253906,
+    "75446": -4.027229309082031,
+    "24247": -4.304906845092773
+  },
+  "reuse_ok": true,
+  "numerically_exact": true,
+  "verdict": "REUSE + EXACT"
+}
